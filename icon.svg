@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Whatnot Daily Ops app icon">
+  <rect width="128" height="128" rx="30" fill="#0A84FF"/>
+  <path d="M34 36h60a8 8 0 0 1 8 8v44a8 8 0 0 1-8 8H34a8 8 0 0 1-8-8V44a8 8 0 0 1 8-8Z" fill="#fff" opacity=".96"/>
+  <path d="M42 52h18M42 66h44M42 80h30" stroke="#0A84FF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M82 48l10 10-20 20-10-10 20-20Z" fill="#34C759"/>
+</svg>

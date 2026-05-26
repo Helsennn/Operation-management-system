@@ -1,0 +1,125 @@
+.screen {
+  display: none;
+}
+
+.screen.active {
+  display: grid;
+}
+
+.prototype-icon {
+  align-items: center;
+  display: inline-flex;
+  height: 21px;
+  justify-content: center;
+  position: relative;
+  width: 21px;
+}
+
+.prototype-icon::before,
+.prototype-icon::after {
+  box-sizing: border-box;
+  content: "";
+  position: absolute;
+}
+
+.icon-home::before {
+  border-left: 2px solid currentColor;
+  border-top: 2px solid currentColor;
+  height: 12px;
+  left: 4px;
+  top: 6px;
+  transform: rotate(45deg);
+  width: 12px;
+}
+
+.icon-home::after {
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 2px;
+  bottom: 2px;
+  height: 9px;
+  left: 5px;
+  width: 11px;
+}
+
+.icon-calendar {
+  border: 1.8px solid currentColor;
+  border-radius: 5px;
+}
+
+.icon-calendar::before {
+  border-top: 1.8px solid currentColor;
+  left: 0;
+  right: 0;
+  top: 6px;
+}
+
+.icon-calendar::after {
+  background:
+    radial-gradient(circle, currentColor 0 2px, transparent 2.2px) 4px 10px / 7px 7px no-repeat,
+    radial-gradient(circle, currentColor 0 2px, transparent 2.2px) 11px 10px / 7px 7px no-repeat;
+  inset: 0;
+}
+
+.icon-report {
+  border: 1.8px solid currentColor;
+  border-radius: 4px;
+}
+
+.icon-report::before {
+  background: currentColor;
+  border-radius: 2px;
+  height: 1.8px;
+  left: 5px;
+  top: 7px;
+  width: 11px;
+  box-shadow: 0 5px 0 currentColor, 0 10px 0 currentColor;
+}
+
+.icon-report::after {
+  border-left: 5px solid transparent;
+  border-top: 5px solid currentColor;
+  right: 0;
+  top: 0;
+}
+
+.icon-note {
+  border: 1.8px solid currentColor;
+  border-radius: 5px;
+}
+
+.icon-note::before {
+  background: currentColor;
+  border-radius: 2px;
+  height: 1.8px;
+  left: 5px;
+  top: 7px;
+  width: 11px;
+  box-shadow: 0 5px 0 currentColor;
+}
+
+.icon-note::after {
+  border-bottom: 5px solid currentColor;
+  border-left: 5px solid transparent;
+  bottom: 0;
+  right: 0;
+}
+
+.icon-chart::before {
+  border-bottom: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  bottom: 3px;
+  height: 16px;
+  left: 3px;
+  width: 16px;
+}
+
+.icon-chart::after {
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  height: 10px;
+  left: 7px;
+  top: 5px;
+  transform: rotate(-45deg);
+  width: 10px;
+}

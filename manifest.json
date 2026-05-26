@@ -1,0 +1,17 @@
+{
+  "name": "Whatnot Daily Ops",
+  "short_name": "Daily Ops",
+  "description": "Schedule livestream teams, record show context, and generate Daily Show Reports.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "icons": [
+    {
+      "src": "/brand-logo.jpeg",
+      "sizes": "1045x1126",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

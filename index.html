@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f5f7" />
+    <title>Whatnot Daily Ops Prototype</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="/app/globals.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <div class="brand">
+          <div class="brand-mark"><img src="./brand-logo.jpeg" alt="36 Sample Sale logo" /></div>
+          <div>
+            <h1>Daily Ops</h1>
+            <p>Whatnot livestream control center</p>
+          </div>
+        </div>
+        <nav class="nav-list" id="desktopNav"></nav>
+        <section class="sidebar-note">
+          <span>V1 focus</span>
+          <p>Schedule, records, CSV report generation. Analytics is isolated by design.</p>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button class="back-button" id="backButton" aria-label="Go back" type="button">‹</button>
+            <div>
+              <p class="eyebrow">Whatnot Daily Ops</p>
+              <h2 id="screenTitle">Today</h2>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button class="secondary-button" type="button" id="newShowButton">New show</button>
+            <button class="primary-button" type="button" data-go="report">Generate report</button>
+          </div>
+        </header>
+
+        <nav class="mobile-tabbar" id="mobileNav" aria-label="Mobile app navigation"></nav>
+
+        <section id="today" class="screen-stack screen active">
+          <div class="kpi-grid" id="kpiGrid"></div>
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Daily performance trend</h3>
+                <p id="trendStatus">Select a point for details.</p>
+              </div>
+              <div class="segmented-control" id="trendControls" role="group" aria-label="Trend metric"></div>
+            </div>
+            <div class="chart-scroll" id="trendChart"></div>
+          </article>
+          <div class="two-column">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Upcoming shows</h3>
+                  <p>Multiple livestreams can run on the same day.</p>
+                </div>
+                <button class="text-button" type="button" data-go="schedule">Open</button>
+              </div>
+              <div class="shift-list" id="shiftList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Risk alerts</h3>
+                  <p>Auto-generated from current report metrics.</p>
+                </div>
+              </div>
+              <div class="alert-list" id="alertList"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="schedule" class="screen-stack screen">
+          <div class="section-title">
+            <div>
+              <h3>Schedule calendar</h3>
+              <p>Each day can contain multiple livestreams, with multiple hosts and operators assigned per show.</p>
+              <p class="status-line" id="scheduleStatus">Schedule ready. Add Show creates a draft block for the day.</p>
+            </div>
+            <button class="primary-button" type="button" id="addShowButton">Add show</button>
+          </div>
+          <div class="schedule-days" id="scheduleGrid"></div>
+        </section>
+
+        <section id="report" class="screen-stack screen">
+          <div class="upload-panel">
+            <div>
+              <h3>Upload Whatnot sales CSV</h3>
+              <p id="csvStatus">Sample data loaded. Upload a Whatnot CSV to replace it.</p>
+            </div>
+            <label class="file-button">
+              Select CSV
+              <input id="csvInput" type="file" accept=".csv,text/csv" />
+            </label>
+          </div>
+          <div class="form-grid" id="showForm"></div>
+          <div class="kpi-grid compact" id="reportKpis"></div>
+          <div class="two-column wide-left">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>CPI product analysis</h3>
+                  <p id="skuStatus">Click a bar to inspect the SKU.</p>
+                </div>
+                <div class="segmented-control" id="cpiControls" role="group" aria-label="CPI bucket"></div>
+              </div>
+              <div class="cpi-chart" id="cpiChart"></div>
+              <div class="sku-detail" id="skuDetail"></div>
+              <section class="sku-section">
+                <h4>100%+ CPI SKUs</h4>
+                <div class="table-wrap" id="winnerTable"></div>
+              </section>
+              <section class="sku-section">
+                <h4>Below 80% CPI SKUs</h4>
+                <div class="table-wrap" id="riskTable"></div>
+              </section>
+            </article>
+            <article class="panel report-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Generated Daily Report</h3>
+                  <p id="reportStatus">Status: Draft</p>
+                </div>
+                <div class="button-row">
+                  <button class="secondary-button" type="button" id="copyReport">Copy</button>
+                  <button class="primary-button" type="button" id="markReviewed">Mark reviewed</button>
+                </div>
+              </div>
+              <pre id="dailyReport"></pre>
+            </article>
+          </div>
+        </section>
+
+        <section id="records" class="screen-stack screen">
+          <div class="section-title">
+            <div>
+              <h3>Livestream records</h3>
+              <p>Structured notes keep non-CSV context usable for future weekly and monthly reviews.</p>
+            </div>
+          </div>
+          <article class="panel">
+            <h3>Actions taken</h3>
+            <div class="chip-grid" id="actionChips"></div>
+          </article>
+          <div class="notes-grid" id="notesGrid"></div>
+        </section>
+
+        <section id="analytics" class="screen-stack screen">
+          <div class="section-title">
+            <div>
+              <h3>Analytics segment</h3>
+              <p>This is intentionally separate from scheduling and Daily Report editing.</p>
+            </div>
+            <div class="button-row">
+              <a class="secondary-button link-button" href="../../dashboard/index.html" target="_blank" rel="noreferrer">Open weekly dashboard</a>
+              <label class="file-button subtle">
+                Import dashboard JSON
+                <input id="analyticsInput" type="file" accept=".json,application/json" />
+              </label>
+            </div>
+          </div>
+          <article class="panel boundary-panel">
+            <strong>Data boundary</strong>
+            <p id="analyticsStatus">Optional: import the existing dashboard JSON here.</p>
+            <p>Use this segment for the previous website data, weekly trends, category reviews, and SKU history. Daily Reports stay focused on one show at a time.</p>
+          </article>
+          <div class="analytics-grid" id="analyticsGrid"></div>
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Weekly website trend</h3>
+                <p id="weeklyTrendStatus">Open the existing weekly dashboard, or import JSON for a small preview here.</p>
+              </div>
+              <div class="segmented-control" id="analyticsTrendControls" role="group" aria-label="Analytics metric"></div>
+            </div>
+            <div class="chart-scroll" id="analyticsTrendChart"></div>
+          </article>
+        </section>
+        <div id="detailLayer"></div>
+        <div id="toastLayer"></div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
