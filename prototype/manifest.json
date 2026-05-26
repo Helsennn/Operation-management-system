@@ -1,0 +1,16 @@
+{
+  "name": "Whatnot Daily Ops Prototype",
+  "short_name": "Daily Ops",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "icons": [
+    {
+      "src": "./brand-logo.jpeg",
+      "sizes": "1045x1126",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
