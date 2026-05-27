@@ -387,6 +387,21 @@ dt,
   justify-content: flex-end;
 }
 
+.inline-date-field {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+  min-width: 154px;
+  text-transform: uppercase;
+}
+
+.inline-date-field input {
+  min-height: 42px;
+  padding: 7px 10px;
+}
+
 .text-button {
   background: transparent;
   color: var(--primary);
@@ -673,6 +688,40 @@ dt,
 
 .trend-chart .axis-label {
   text-anchor: middle;
+}
+
+.trend-editor {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(232, 242, 255, 0.58));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.trend-editor label {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.trend-editor input {
+  min-height: 40px;
+  padding: 7px 10px;
+}
+
+.trend-editor-actions {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
 }
 
 .shift-list,
@@ -2747,6 +2796,14 @@ textarea:focus {
 
   .segmented-control button {
     min-height: 44px;
+  }
+
+  .trend-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-editor-actions {
+    justify-content: flex-start;
   }
 
   .cpi-bar {

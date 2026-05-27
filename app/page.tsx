@@ -956,6 +956,23 @@ function formatDateInput(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function inferDateFromFileName(filename: string, fallbackDate: string) {
+  const yearMatch = filename.match(/(20\d{2})[-_.\s](\d{1,2})[-_.\s](\d{1,2})/);
+  if (yearMatch) {
+    const date = new Date(Number(yearMatch[1]), Number(yearMatch[2]) - 1, Number(yearMatch[3]));
+    if (!Number.isNaN(date.getTime())) return formatDateInput(date);
+  }
+
+  const shortMatch = filename.match(/(?:^|[^0-9])(\d{1,2})[-_.\s](\d{1,2})(?:[^0-9]|$)/);
+  if (shortMatch) {
+    const fallbackYear = Number(fallbackDate.match(/^(\d{4})/)?.[1] ?? new Date().getFullYear());
+    const date = new Date(fallbackYear, Number(shortMatch[1]) - 1, Number(shortMatch[2]));
+    if (!Number.isNaN(date.getTime())) return formatDateInput(date);
+  }
+
+  return "";
+}
+
 function addDays(dateValue: string, offset: number) {
   const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return "";
@@ -1483,6 +1500,12 @@ export default function Home() {
   const [availabilityText, setAvailabilityText] = useState(sampleAvailabilityText);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>([]);
   const [availabilityWeekStart, setAvailabilityWeekStart] = useState(initialShow.date);
+  const [csvTrendDate, setCsvTrendDate] = useState(initialShow.date);
+  const [manualTrendDate, setManualTrendDate] = useState(initialShow.date);
+  const [manualTrendGmv, setManualTrendGmv] = useState("");
+  const [manualTrendGmvPerHour, setManualTrendGmvPerHour] = useState("");
+  const [manualTrendAov, setManualTrendAov] = useState("");
+  const [manualTrendOrders, setManualTrendOrders] = useState("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("gmv");
   const [selectedDailyTrendIndex, setSelectedDailyTrendIndex] = useState(sampleDailyMetrics.length - 1);
   const [selectedWeeklyTrendIndex, setSelectedWeeklyTrendIndex] = useState(0);
@@ -1768,6 +1791,7 @@ export default function Home() {
       }))
     : sampleDailyMetrics;
   const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
+  const isShowingSampleTrend = !dailyMetrics.length;
   const externalWeeklyTrendData = (externalDashboard?.weekly ?? []).map<TrendPoint>((week) => ({
     label: week.week,
     gmv: week.gmv,
@@ -1994,6 +2018,58 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
 
   function updateNotes<K extends keyof OpsNotes>(key: K, value: OpsNotes[K]) {
     setOpsNotes((current) => ({ ...current, [key]: value }));
+  }
+
+  function upsertDailyTrendPoint(point: TrendPoint) {
+    setDailyMetrics((current) => {
+      const next = [...current.filter((item) => item.date !== point.date), point]
+        .sort((a, b) => String(a.date ?? a.label).localeCompare(String(b.date ?? b.label)))
+        .slice(-21);
+      setSelectedDailyTrendIndex(Math.max(next.findIndex((item) => item.date === point.date), 0));
+      return next;
+    });
+  }
+
+  function saveManualTrendPoint() {
+    const date = manualTrendDate || formatDateInput(new Date());
+    const gmv = parseNumber(manualTrendGmv);
+    const orders = parseNumber(manualTrendOrders);
+    const aov = parseNumber(manualTrendAov) || (orders ? gmv / orders : 0);
+    const gmvPerHour = parseNumber(manualTrendGmvPerHour);
+
+    upsertDailyTrendPoint({
+      label: formatDailyTrendLabel(date),
+      date,
+      gmv,
+      gmv_per_hour: gmvPerHour,
+      aov,
+      orders
+    });
+    showToast(`Trend saved for ${formatDailyTrendLabel(date)}.`);
+  }
+
+  function loadSelectedTrendForEditing() {
+    if (!selectedDailyTrend || !selectedDailyTrend.date) return;
+    setManualTrendDate(selectedDailyTrend.date);
+    setManualTrendGmv(String(Math.round(selectedDailyTrend.gmv)));
+    setManualTrendGmvPerHour(String(Math.round(selectedDailyTrend.gmv_per_hour ?? 0)));
+    setManualTrendAov(String(Number(selectedDailyTrend.aov ?? 0).toFixed(2)));
+    setManualTrendOrders(String(Math.round(selectedDailyTrend.orders ?? 0)));
+    showToast(`${selectedDailyTrend.label} loaded for editing.`);
+  }
+
+  function deleteSelectedTrendPoint() {
+    if (!selectedDailyTrend || !selectedDailyTrend.date) {
+      showToast("Select a saved trend point first.");
+      return;
+    }
+
+    setDailyMetrics((current) => {
+      const next = current.filter((point) => point.date !== selectedDailyTrend.date);
+      setSelectedDailyTrendIndex(Math.max(Math.min(selectedDailyTrendIndex, next.length - 1), 0));
+      return next;
+    });
+    showToast(`${selectedDailyTrend.label} removed from trend history.`);
   }
 
   function saveCurrentNotesToRecords() {
@@ -2492,14 +2568,10 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
     }
     setSalesItems(rows);
     setSalesOutputs(generatedOutputs);
-    const dailyPoint = buildDailyTrendPoint(rows, showInfo.date, showInfo.livestreamHours);
-    setDailyMetrics((current) => {
-      const next = [...current.filter((point) => point.date !== dailyPoint.date), dailyPoint]
-        .sort((a, b) => String(a.date ?? a.label).localeCompare(String(b.date ?? b.label)))
-        .slice(-21);
-      setSelectedDailyTrendIndex(Math.max(next.length - 1, 0));
-      return next;
-    });
+    const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
+    const dailyPoint = buildDailyTrendPoint(rows, trendDate, showInfo.livestreamHours);
+    upsertDailyTrendPoint(dailyPoint);
+    setCsvTrendDate(trendDate);
     const firstSellable = rows.find((item) => !item.isGiveaway && item.costPerItem > 0);
     setSelectedSkuId(firstSellable?.id ?? rows[0]?.id ?? "");
     setActiveLayer(null);
@@ -2726,6 +2798,18 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
                 selectedIndex={Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)}
                 onSelect={setSelectedDailyTrendIndex}
               />
+              <div className="trend-editor">
+                <label>Date<input type="date" value={manualTrendDate} onChange={(event) => setManualTrendDate(event.target.value)} /></label>
+                <label>GMV<input inputMode="decimal" value={manualTrendGmv} onChange={(event) => setManualTrendGmv(event.target.value)} placeholder="7111" /></label>
+                <label>GMV / Hour<input inputMode="decimal" value={manualTrendGmvPerHour} onChange={(event) => setManualTrendGmvPerHour(event.target.value)} placeholder="1422" /></label>
+                <label>AOV<input inputMode="decimal" value={manualTrendAov} onChange={(event) => setManualTrendAov(event.target.value)} placeholder="10.16" /></label>
+                <label>Orders<input inputMode="numeric" value={manualTrendOrders} onChange={(event) => setManualTrendOrders(event.target.value)} placeholder="700" /></label>
+                <div className="trend-editor-actions">
+                  <button className="secondary-button mini-button" type="button" onClick={loadSelectedTrendForEditing} disabled={isShowingSampleTrend || !selectedDailyTrend?.date}>Load selected</button>
+                  <button className="primary-button mini-button" type="button" onClick={saveManualTrendPoint}>Add / Update</button>
+                  <button className="text-button danger-text mini-button" type="button" onClick={deleteSelectedTrendPoint} disabled={isShowingSampleTrend || !selectedDailyTrend?.date}>Delete selected</button>
+                </div>
+              </div>
             </article>
 
             <div className="two-column">
@@ -2995,6 +3079,10 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
                 <label className="file-button">
                   Select CSV
                   <input type="file" accept=".csv,text/csv" onChange={handleCsvUpload} />
+                </label>
+                <label className="inline-date-field">
+                  Trend date
+                  <input type="date" value={csvTrendDate} onChange={(event) => setCsvTrendDate(event.target.value)} />
                 </label>
                 <button className="secondary-button clear-data-button" type="button" onClick={clearCsvData} disabled={!salesItems.length && !salesOutputs}>
                   <Eraser aria-hidden="true" size={16} />
