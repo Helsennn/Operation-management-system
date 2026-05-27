@@ -1383,7 +1383,7 @@ function TrendChart({
 }) {
   const width = 760;
   const height = 250;
-  const padding = { top: 22, right: 24, bottom: 44, left: 54 };
+  const padding = { top: 22, right: 54, bottom: 44, left: 54 };
   const values = data.map((week) => getTrendValue(week, metric));
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);

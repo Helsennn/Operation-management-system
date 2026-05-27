@@ -644,6 +644,7 @@ dt,
 .chart-scroll {
   overflow-x: auto;
   padding-bottom: 2px;
+  scroll-padding-inline: 12px;
 }
 
 .trend-chart {
@@ -2885,6 +2886,16 @@ textarea:focus {
 
   .segmented-control button {
     min-height: 44px;
+  }
+
+  .chart-scroll {
+    margin-inline: -2px;
+    padding-inline: 10px;
+  }
+
+  .trend-chart {
+    margin-inline: auto;
+    min-width: 560px;
   }
 
   .trend-editor {
