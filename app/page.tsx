@@ -3249,7 +3249,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <span>Livestream hours</span>
                 <div className="number-stepper">
                   <button type="button" onClick={() => updateShow("livestreamHours", Math.max(0, Number((showInfo.livestreamHours - 0.25).toFixed(2))))}>-</button>
-                  <input inputMode="decimal" type="number" min="0" step="0.25" value={showInfo.livestreamHours} onChange={(event) => updateShow("livestreamHours", Number(event.target.value))} />
+                  <input inputMode="decimal" type="text" value={String(showInfo.livestreamHours)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateShow("livestreamHours", parseNumber(event.target.value))} />
                   <button type="button" onClick={() => updateShow("livestreamHours", Number((showInfo.livestreamHours + 0.25).toFixed(2)))}>+</button>
                 </div>
               </div>
@@ -3257,7 +3257,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <span>Bookmarks</span>
                 <div className="number-stepper">
                   <button type="button" onClick={() => updateShow("bookmarks", Math.max(0, showInfo.bookmarks - 10))}>-10</button>
-                  <input inputMode="numeric" type="number" min="0" value={showInfo.bookmarks} onChange={(event) => updateShow("bookmarks", Number(event.target.value))} />
+                  <input inputMode="numeric" type="text" value={String(showInfo.bookmarks)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateShow("bookmarks", parseNumber(event.target.value))} />
                   <button type="button" onClick={() => updateShow("bookmarks", showInfo.bookmarks + 10)}>+10</button>
                 </div>
               </div>
