@@ -184,6 +184,7 @@ type AvailabilitySlot = {
 
 type TrendPoint = {
   label: string;
+  date?: string;
   gmv: number;
   gmv_per_hour?: number;
   aov?: number;
@@ -903,6 +904,24 @@ function getTrendValue(point: TrendPoint, metric: TrendMetric) {
   return point[metric] ?? 0;
 }
 
+function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamHours: number): TrendPoint {
+  const date = dateValue || new Date().toISOString().slice(0, 10);
+  const sellableItems = items.filter((item) => !item.isGiveaway);
+  const gmv = sellableItems.reduce((sum, item) => sum + item.totalSales, 0);
+  const orders = sellableItems.reduce((sum, item) => sum + item.orders, 0);
+  const aov = orders ? gmv / orders : 0;
+  const gmvPerHour = livestreamHours ? gmv / livestreamHours : 0;
+
+  return {
+    label: formatShortScheduleDate(date),
+    date,
+    gmv,
+    gmv_per_hour: gmvPerHour,
+    aov,
+    orders
+  };
+}
+
 function formatScheduleDate(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
@@ -1365,14 +1384,13 @@ function PersonChips({
 }
 
 type CloudStateKey =
-  | "salesItems"
-  | "salesOutputs"
   | "scheduledShows"
   | "teamMembers"
   | "showInfo"
   | "opsNotes"
   | "strategyGroups"
-  | "opsRecords";
+  | "opsRecords"
+  | "dailyMetrics";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -1451,6 +1469,7 @@ export default function Home() {
   const [strategyGroups, setStrategyGroups] = useState<StrategyGroup[]>(initialStrategyGroups);
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
   const [recordCategoryFilter, setRecordCategoryFilter] = useState<OpsRecordCategory | "all">("all");
+  const [dailyMetrics, setDailyMetrics] = useState<TrendPoint[]>([]);
   const [weeklyMetrics, setWeeklyMetrics] = useState<TrendPoint[]>([]);
   const [csvStatus, setCsvStatus] = useState("Sample data loaded. Upload a Whatnot CSV to replace it.");
   const [analyticsStatus, setAnalyticsStatus] = useState("Open Analytics to connect the existing dashboard data.");
@@ -1499,6 +1518,7 @@ export default function Home() {
     const localOpsNotes = readLocalJson<OpsNotes>("dailyOps.opsNotes.v1", initialNotes);
     const localStrategy = readLocalJson<StrategyGroup[]>("dailyOps.strategyGroups.v1", initialStrategyGroups);
     const localRecords = readLocalJson<OpsRecord[]>("dailyOps.opsRecords.v1", initialOpsRecords);
+    const localDailyMetrics = readLocalJson<TrendPoint[]>("dailyOps.dailyMetrics.v1", []);
 
     if (Array.isArray(localSalesItems)) setSalesItems(localSalesItems);
     setSalesOutputs(localSalesOutputs);
@@ -1508,6 +1528,7 @@ export default function Home() {
     setOpsNotes(localOpsNotes);
     if (Array.isArray(localStrategy)) setStrategyGroups(localStrategy);
     if (Array.isArray(localRecords)) setOpsRecords(localRecords);
+    if (Array.isArray(localDailyMetrics)) setDailyMetrics(localDailyMetrics);
     window.setTimeout(() => {
       localReady.current = true;
     }, 0);
@@ -1521,35 +1542,32 @@ export default function Home() {
     async function loadCloudState() {
       try {
         const [
-          cloudSalesItems,
-          cloudSalesOutputs,
           cloudScheduledShows,
           cloudTeam,
           cloudShowInfo,
           cloudOpsNotes,
           cloudStrategy,
-          cloudRecords
+          cloudRecords,
+          cloudDailyMetrics
         ] = await Promise.all([
-          loadCloudValue<SalesItem[]>("salesItems"),
-          loadCloudValue<GeneratedSalesOutputs | null>("salesOutputs"),
           loadCloudValue<ScheduledShow[]>("scheduledShows"),
           loadCloudValue<TeamMember[]>("teamMembers"),
           loadCloudValue<ShowInfo>("showInfo"),
           loadCloudValue<OpsNotes>("opsNotes"),
           loadCloudValue<StrategyGroup[]>("strategyGroups"),
           loadCloudValue<OpsRecord[]>("opsRecords"),
+          loadCloudValue<TrendPoint[]>("dailyMetrics"),
         ]);
 
         if (cancelled) return;
 
-        if (Array.isArray(cloudSalesItems)) setSalesItems(cloudSalesItems);
-        if (cloudSalesOutputs) setSalesOutputs(cloudSalesOutputs);
         if (Array.isArray(cloudScheduledShows)) setScheduledShows(cloudScheduledShows);
         if (Array.isArray(cloudTeam)) setTeamMembers(cloudTeam);
         if (cloudShowInfo) setShowInfo(cloudShowInfo);
         if (cloudOpsNotes) setOpsNotes(cloudOpsNotes);
         if (Array.isArray(cloudStrategy)) setStrategyGroups(cloudStrategy);
         if (Array.isArray(cloudRecords)) setOpsRecords(cloudRecords);
+        if (Array.isArray(cloudDailyMetrics)) setDailyMetrics(cloudDailyMetrics);
         setCloudStatus("Cloud sync connected.");
       } catch {
         if (!cancelled) setCloudStatus("Cloud sync needs the Supabase table/RLS setup.");
@@ -1568,13 +1586,11 @@ export default function Home() {
   useEffect(() => {
     if (!localReady.current) return;
     window.localStorage.setItem("dailyOps.salesItems.v1", JSON.stringify(salesItems));
-    queueCloudSave("salesItems", salesItems);
   }, [salesItems]);
 
   useEffect(() => {
     if (!localReady.current) return;
     window.localStorage.setItem("dailyOps.salesOutputs.v1", JSON.stringify(salesOutputs));
-    queueCloudSave("salesOutputs", salesOutputs);
   }, [salesOutputs]);
 
   useEffect(() => {
@@ -1612,6 +1628,12 @@ export default function Home() {
     window.localStorage.setItem("dailyOps.strategyGroups.v1", JSON.stringify(strategyGroups));
     queueCloudSave("strategyGroups", strategyGroups);
   }, [strategyGroups]);
+
+  useEffect(() => {
+    if (!localReady.current) return;
+    window.localStorage.setItem("dailyOps.dailyMetrics.v1", JSON.stringify(dailyMetrics));
+    queueCloudSave("dailyMetrics", dailyMetrics);
+  }, [dailyMetrics]);
 
   useEffect(() => {
     if (segment !== "analytics" || externalDashboard) return;
@@ -1733,7 +1755,7 @@ export default function Home() {
     }, {})
   ).sort((a, b) => b.gmv - a.gmv);
 
-  const dailyTrendData = sampleDailyMetrics;
+  const dailyTrendData = dailyMetrics.length ? dailyMetrics : sampleDailyMetrics;
   const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
   const externalWeeklyTrendData = (externalDashboard?.weekly ?? []).map<TrendPoint>((week) => ({
     label: week.week,
@@ -2459,11 +2481,19 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
     }
     setSalesItems(rows);
     setSalesOutputs(generatedOutputs);
+    const dailyPoint = buildDailyTrendPoint(rows, showInfo.date, showInfo.livestreamHours);
+    setDailyMetrics((current) => {
+      const next = [...current.filter((point) => point.date !== dailyPoint.date), dailyPoint]
+        .sort((a, b) => String(a.date ?? a.label).localeCompare(String(b.date ?? b.label)))
+        .slice(-21);
+      setSelectedDailyTrendIndex(Math.max(next.length - 1, 0));
+      return next;
+    });
     const firstSellable = rows.find((item) => !item.isGiveaway && item.costPerItem > 0);
     setSelectedSkuId(firstSellable?.id ?? rows[0]?.id ?? "");
     setActiveLayer(null);
     setCpiView("all");
-    setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. SalesData, migrateData, and financeData were generated.`);
+    setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. Daily trend saved for ${dailyPoint.label}.`);
     setReportStatus("Draft updated");
     event.target.value = "";
     showToast("CSV imported and report refreshed.");
