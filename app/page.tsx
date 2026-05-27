@@ -1964,7 +1964,7 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
   }
 
   function saveCurrentNotesToRecords() {
-    const entries: Array<[OpsRecordCategory, string]> = [
+    const rawEntries: Array<[OpsRecordCategory, string]> = [
       ["actions", opsNotes.actions.join("; ")],
       ["traffic", opsNotes.traffic],
       ["giveaway", opsNotes.giveaway],
@@ -1972,7 +1972,8 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
       ["inventory", opsNotes.inventory],
       ["kpiContext", opsNotes.kpiContext],
       ["competitor", opsNotes.competitor]
-    ].filter(([, note]) => note.trim().length > 0);
+    ];
+    const entries = rawEntries.filter(([, note]) => note.trim().length > 0);
 
     if (!entries.length) {
       showToast("No notes to save yet.");
