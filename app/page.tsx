@@ -552,14 +552,15 @@ function parseNumber(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function splitCsvLine(line: string) {
-  const values: string[] = [];
+function parseCsvRecords(csv: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let current = "";
   let inQuotes = false;
 
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
+  for (let index = 0; index < csv.length; index += 1) {
+    const char = csv[index];
+    const next = csv[index + 1];
 
     if (char === '"' && next === '"') {
       current += '"';
@@ -573,7 +574,20 @@ function splitCsvLine(line: string) {
     }
 
     if (char === "," && !inQuotes) {
-      values.push(current.trim());
+      row.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") {
+        index += 1;
+      }
+      row.push(current.trim());
+      if (row.some(Boolean)) {
+        rows.push(row);
+      }
+      row = [];
       current = "";
       continue;
     }
@@ -581,8 +595,16 @@ function splitCsvLine(line: string) {
     current += char;
   }
 
-  values.push(current.trim());
-  return values;
+  row.push(current.trim());
+  if (row.some(Boolean)) {
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function splitCsvLine(line: string) {
+  return parseCsvRecords(line)[0] ?? [];
 }
 
 function findColumn(headers: string[], candidates: string[]) {
@@ -666,11 +688,8 @@ function removeProductNumber(productName: string) {
 }
 
 function buildGeneratedSalesOutputs(csv: string, sourceFile: string): GeneratedSalesOutputs {
-  const lines = csv
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length < 2) {
+  const records = parseCsvRecords(csv);
+  if (records.length < 2) {
     return {
       sourceFile,
       salesData: [],
@@ -681,7 +700,7 @@ function buildGeneratedSalesOutputs(csv: string, sourceFile: string): GeneratedS
     };
   }
 
-  const rawHeaders = splitCsvLine(lines[0]);
+  const rawHeaders = records[0];
   const headers = rawHeaders.map((header) => {
     const normalized = normalizeHeader(header);
     const headerMap: Record<string, string> = {
@@ -699,8 +718,7 @@ function buildGeneratedSalesOutputs(csv: string, sourceFile: string): GeneratedS
 
   const cancelledOrders: string[] = [];
   const failedOrders: string[] = [];
-  const normalizedRows = lines.slice(1).map((line) => {
-    const cells = splitCsvLine(line);
+  const normalizedRows = records.slice(1).map((cells) => {
     const rawProductName = getCsvCell(cells, headers, ["product name", "product", "item name", "title"]);
     const status = getCsvCell(cells, headers, ["cancelled or failed", "cancelled_or_failed", "status"]).toLowerCase().trim();
     const productName = removeProductNumber(rawProductName);
@@ -847,25 +865,22 @@ function salesDataRowsToSalesItems(rows: GeneratedSalesDataRow[]) {
         category,
         isGiveaway: isGiveawayProduct(productName)
       };
-    });
+    })
+    .filter((item) => item.orders > 0);
 }
 
 function parseSalesCsv(csv: string): SalesItem[] {
-  const lines = csv
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length < 2) return [];
+  const records = parseCsvRecords(csv);
+  if (records.length < 2) return [];
 
-  const headers = splitCsvLine(lines[0]);
+  const headers = records[0];
   const productIndex = findColumn(headers, ["product name", "product", "item name", "title"]) ?? 0;
   const totalIndex = findColumn(headers, ["total sales", "totalsales", "sales", "gmv"]) ?? 1;
   const ordersIndex = findColumn(headers, ["number of orders", "orders", "quantity", "qty", "units"]) ?? 2;
   const costIndex = findColumn(headers, ["cost per item", "cost", "cpi"]) ?? 3;
   const averageIndex = findColumn(headers, ["average price", "avg price", "average selling price"]) ?? totalIndex;
 
-  const rows = lines.slice(1).map((line, rowIndex) => {
-    const cells = splitCsvLine(line);
+  const rows = records.slice(1).map((cells, rowIndex) => {
     const productName = cells[productIndex] || "Unnamed product";
     const totalSales = parseNumber(cells[totalIndex]);
     const orders = parseNumber(cells[ordersIndex]) || 1;
@@ -943,9 +958,8 @@ function createTrendId(date: string, label: string) {
 
 function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamHours: number, sessionLabel = "Session"): TrendPoint {
   const date = dateValue || new Date().toISOString().slice(0, 10);
-  const sellableItems = items.filter((item) => !item.isGiveaway);
-  const gmv = sellableItems.reduce((sum, item) => sum + item.totalSales, 0);
-  const orders = sellableItems.reduce((sum, item) => sum + item.orders, 0);
+  const gmv = items.reduce((sum, item) => sum + item.totalSales, 0);
+  const orders = items.reduce((sum, item) => sum + item.orders, 0);
   const aov = orders ? gmv / orders : 0;
   const gmvPerHour = livestreamHours ? gmv / livestreamHours : 0;
 
@@ -1791,13 +1805,13 @@ export default function Home() {
   const metrics = useMemo(() => {
     const sellableItems = salesItems.filter((item) => !item.isGiveaway);
     const giveawayItems = salesItems.filter((item) => item.isGiveaway);
-    const gmv = sellableItems.reduce((sum, item) => sum + item.totalSales, 0);
-    const units = sellableItems.reduce((sum, item) => sum + item.orders, 0);
+    const gmv = salesItems.reduce((sum, item) => sum + item.totalSales, 0);
+    const units = salesItems.reduce((sum, item) => sum + item.orders, 0);
     const sellableCost = sellableItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
     const giveawayCost = giveawayItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
-    const totalCost = sellableCost + giveawayCost;
+    const totalCost = salesItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
     const aov = units ? gmv / units : 0;
-    const cpi = units ? sellableCost / units : 0;
+    const cpi = units ? totalCost / units : 0;
     const profitMargin = gmv ? (gmv - totalCost) / gmv : 0;
     const targetPriceCompletion = cpi ? aov / cpi : 0;
     const gmvPerHour = showInfo.livestreamHours ? gmv / showInfo.livestreamHours : 0;
