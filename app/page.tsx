@@ -913,6 +913,30 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function getTargetCompletionBand(value: number) {
+  if (value >= 1.2) return { value: "Breakout", helper: "120%+ exceptional" };
+  if (value >= 1) return { value: "Excellent", helper: "100-120% very strong" };
+  if (value >= 0.9) return { value: "Healthy", helper: "90-100% acceptable" };
+  if (value >= 0.8) return { value: "Soft line", helper: "80-90% needs control" };
+  if (value >= 0.6) return { value: "Pressure", helper: "60-80% needs attention" };
+  return { value: "Critical", helper: "Below 60% stop-loss zone" };
+}
+
+function getMarginLineBand(value: number) {
+  if (value >= 0.2) return { value: "Premium line", helper: "20%+ excellent margin" };
+  if (value >= 0.1) return { value: "Healthy line", helper: "10-20% strong margin" };
+  if (value >= 0) return { value: "Break-even line", helper: "0-10% thin but positive" };
+  if (value >= -0.2) return { value: "Below line", helper: "-20-0% margin pressure" };
+  return { value: "Loss line", helper: "Below -20% high loss exposure" };
+}
+
+function getPromotionLoadBand(value: number, cost: number) {
+  if (cost <= 0) return { value: "No promo cost", helper: "0% of GMV tracked" };
+  if (value <= 0.02) return { value: "Light load", helper: "0-2% of GMV" };
+  if (value <= 0.05) return { value: "Managed load", helper: "2-5% of GMV" };
+  return { value: "Heavy load", helper: "Above 5% of GMV" };
+}
+
 function formatTrendValue(metric: TrendMetric, value: number) {
   if (metric === "aov") return decimalCurrency.format(value);
   return currency.format(value);
@@ -1898,31 +1922,38 @@ export default function Home() {
   const latestExternalWeek = externalDashboard?.weekly?.at(-1);
   const latestExternalDaily = externalDashboard?.latest_daily ?? [];
   const latestExternalDay = latestExternalDaily.at(-1);
-  const pricingHealth = metrics.targetPriceCompletion >= 1 ? "Strong" : metrics.targetPriceCompletion >= 0.8 ? "Watch" : "Risk";
-  const productMixHealth = skuGroups.winners.length >= skuGroups.risk.length ? "Balanced" : "Drag-heavy";
-  const marginRisk = metrics.profitMargin >= 0.15 ? "Low" : metrics.profitMargin >= 0 ? "Medium" : "High";
+  const targetCompletionBand = getTargetCompletionBand(metrics.targetPriceCompletion);
+  const productMixHealth =
+    skuGroups.winners.length === 0 && skuGroups.risk.length > 0
+      ? "No winner support"
+      : skuGroups.winners.length >= skuGroups.risk.length
+        ? "Winner-led"
+        : skuGroups.risk.length > skuGroups.winners.length * 2
+          ? "Drag-heavy"
+          : "Mixed quality";
+  const marginLineBand = getMarginLineBand(metrics.profitMargin);
   const giveawayRatio = metrics.gmv ? metrics.giveawayCost / metrics.gmv : 0;
-  const promotionDiscipline = metrics.giveawayCost === 0 ? "No spend" : giveawayRatio <= 0.03 ? "Controlled" : "Heavy";
+  const promotionLoadBand = getPromotionLoadBand(giveawayRatio, metrics.giveawayCost);
   const dailyInsightCards = [
     {
-      label: "Pricing health",
-      value: pricingHealth,
-      helper: `${formatPercent(metrics.targetPriceCompletion)} target completion`
+      label: "Target completion",
+      value: targetCompletionBand.value,
+      helper: `${formatPercent(metrics.targetPriceCompletion)} · ${targetCompletionBand.helper}`
     },
     {
-      label: "Product mix",
+      label: "SKU quality mix",
       value: productMixHealth,
-      helper: `${skuGroups.winners.length} winners · ${skuGroups.risk.length} drag SKUs`
+      helper: `${skuGroups.winners.length} winners (100%+) · ${skuGroups.risk.length} drag (<80%)`
     },
     {
-      label: "Margin risk",
-      value: marginRisk,
-      helper: `${formatPercent(metrics.profitMargin)} profit margin`
+      label: "Margin line",
+      value: marginLineBand.value,
+      helper: `${formatPercent(metrics.profitMargin)} · ${marginLineBand.helper}`
     },
     {
-      label: "Promotion spend",
-      value: promotionDiscipline,
-      helper: `${decimalCurrency.format(metrics.giveawayCost)} · ${formatPercent(giveawayRatio)} of GMV`
+      label: "Promotion load",
+      value: promotionLoadBand.value,
+      helper: `${decimalCurrency.format(metrics.giveawayCost)} · ${formatPercent(giveawayRatio)} · ${promotionLoadBand.helper}`
     }
   ];
   const categoryContribution = categories
