@@ -1896,7 +1896,7 @@ export default function Home() {
     );
     const giveawayUsed = skuGroups.giveaways.map((item) => item.productName).join(", ") || "None recorded";
     const actionsTaken = opsNotes.actions.join("; ");
-    const optionalLine = (label: string, value: string) => value.trim() ? `- ${label}: ${compactReportText(value)}` : "";
+    const optionalLine = (label: string, value: string) => value.trim() ? `- ${label}: ${compactReportText(value, "", 150)}` : "";
     const optionalLines = (lines: string[]) => lines.filter(Boolean).join("\n");
     const cpiText =
       metrics.targetPriceCompletion >= 0.8
