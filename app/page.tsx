@@ -592,7 +592,7 @@ function findColumn(headers: string[], candidates: string[]) {
 
 function inferCategory(productName: string) {
   const name = productName.toLowerCase();
-  if (name.includes("giveaway") || name.includes("gift card") || name.includes("amazon")) return "Giveaway";
+  if (isGiveawayProduct(productName)) return "Giveaway";
   if (name.includes("monitor")) return "Monitor";
   if (name.includes("apple") || name.includes("airpod") || name.includes("iphone")) return "Apple / Branded";
   if (name.includes("power") || name.includes("charger") || name.includes("cable")) return "Electronics";
@@ -600,6 +600,13 @@ function inferCategory(productName: string) {
   if (name.includes("tool") || name.includes("glue") || name.includes("drill")) return "Tools";
   if (name.includes("beauty") || name.includes("hair")) return "Beauty";
   return "Home";
+}
+
+function isGiveawayProduct(productName: string) {
+  const name = productName.toLowerCase();
+  const excluded = /\b(usps|shipping|ship|label|postage|delivery|freight)\b/.test(name);
+  if (excluded) return false;
+  return /\b(giveaway|gift\s*card|amazon\s*card|promo|promotion|freebie|raffle|prize)\b/.test(name);
 }
 
 function createSkuId(productName: string, index: number) {
@@ -835,7 +842,7 @@ function salesDataRowsToSalesItems(rows: GeneratedSalesDataRow[]) {
         costPerItem,
         averagePrice,
         category,
-        isGiveaway: category === "Giveaway" || totalSales === 0 || productName.toLowerCase().includes("giveaway")
+        isGiveaway: isGiveawayProduct(productName)
       };
     });
 }
@@ -872,10 +879,7 @@ function parseSalesCsv(csv: string): SalesItem[] {
       costPerItem,
       averagePrice,
       category,
-      isGiveaway:
-        category === "Giveaway" ||
-        totalSales === 0 ||
-        productName.toLowerCase().includes("giveaway")
+      isGiveaway: isGiveawayProduct(productName)
     };
   });
 
@@ -1832,6 +1836,7 @@ export default function Home() {
     : sampleDailyMetrics;
   const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
   const isShowingSampleTrend = !dailyMetrics.length;
+  const currentReportDate = csvTrendDate || showInfo.date;
   const externalWeeklyTrendData = (externalDashboard?.weekly ?? []).map<TrendPoint>((week) => ({
     label: week.week,
     gmv: week.gmv,
@@ -2019,7 +2024,7 @@ export default function Home() {
       opsNotes.inventory ? `Inventory: ${compactReportText(opsNotes.inventory, "", 90)}` : ""
     ].filter(Boolean);
     const previousTrend = dailyMetrics
-      .filter((point) => point.date && point.date < showInfo.date)
+      .filter((point) => point.date && point.date < currentReportDate)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       .slice(0, 3);
     const previousAvgGmv = previousTrend.length ? previousTrend.reduce((sum, point) => sum + point.gmv, 0) / previousTrend.length : 0;
@@ -2042,7 +2047,7 @@ export default function Home() {
 
     return `Daily Show Summary
 
-Date: ${showInfo.date}
+Date: ${currentReportDate}
 Show: ${showInfo.showName}
 Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 
@@ -2069,7 +2074,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 - ${cpiText}; ${marginText}.
 - ${trendText}
 - Next focus: ${nextFocus}`;
-  }, [categories, dailyMetrics, metrics, opsNotes, salesItems, showInfo, skuGroups]);
+  }, [categories, currentReportDate, dailyMetrics, metrics, opsNotes, salesItems, showInfo, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
@@ -2149,7 +2154,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     }
 
     const createdAt = new Date().toISOString();
-    const recordDate = csvTrendDate || showInfo.date;
+    const recordDate = currentReportDate;
     const newRecords = entries.map(([category, note], index) => ({
       id: `record-${Date.now()}-${index}`,
       date: recordDate,
@@ -2165,7 +2170,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function saveGeneratedReportSnapshot() {
-    const reportDate = csvTrendDate || showInfo.date;
+    const reportDate = currentReportDate;
     const snapshot: ReportSnapshot = {
       id: `report-${Date.now()}`,
       date: reportDate,
