@@ -2972,9 +2972,6 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
                 <option>Test Show</option>
               </select></label>
               <label>Livestream hours<input type="number" min="0" step="0.25" value={showInfo.livestreamHours} onChange={(event) => updateShow("livestreamHours", Number(event.target.value))} /></label>
-              <label>Host<input value={showInfo.host} onChange={(event) => updateShow("host", event.target.value)} /></label>
-              <label>Operator<input value={showInfo.operator} onChange={(event) => updateShow("operator", event.target.value)} /></label>
-              <label>Leader<input value={showInfo.leader} onChange={(event) => updateShow("leader", event.target.value)} /></label>
               <label>Bookmarks<input type="number" min="0" value={showInfo.bookmarks} onChange={(event) => updateShow("bookmarks", Number(event.target.value))} /></label>
               <label>On-time start<select value={showInfo.onTimeStart} onChange={(event) => updateShow("onTimeStart", event.target.value)}>
                 <option>YES</option>
