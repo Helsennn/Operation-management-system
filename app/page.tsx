@@ -191,12 +191,15 @@ type AvailabilitySlot = {
 };
 
 type TrendPoint = {
+  id?: string;
   label: string;
   date?: string;
   gmv: number;
   gmv_per_hour?: number;
   aov?: number;
   orders?: number;
+  hours?: number;
+  sessionLabel?: string;
 };
 
 type ExternalDailyPoint = {
@@ -934,7 +937,11 @@ function getTrendValue(point: TrendPoint, metric: TrendMetric) {
   return point[metric] ?? 0;
 }
 
-function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamHours: number): TrendPoint {
+function createTrendId(date: string, label: string) {
+  return `${date}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48)}`;
+}
+
+function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamHours: number, sessionLabel = "Session"): TrendPoint {
   const date = dateValue || new Date().toISOString().slice(0, 10);
   const sellableItems = items.filter((item) => !item.isGiveaway);
   const gmv = sellableItems.reduce((sum, item) => sum + item.totalSales, 0);
@@ -943,13 +950,46 @@ function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamH
   const gmvPerHour = livestreamHours ? gmv / livestreamHours : 0;
 
   return {
+    id: createTrendId(date, sessionLabel),
     label: formatDailyTrendLabel(date),
     date,
     gmv,
     gmv_per_hour: gmvPerHour,
     aov,
-    orders
+    orders,
+    hours: livestreamHours,
+    sessionLabel
   };
+}
+
+function aggregateDailyTrendPoints(points: TrendPoint[]) {
+  return Object.values(
+    points.reduce<Record<string, TrendPoint>>((days, point) => {
+      const date = point.date ?? point.label;
+      if (!days[date]) {
+        days[date] = {
+          id: `day-${date}`,
+          label: point.date ? formatDailyTrendLabel(point.date) : point.label,
+          date: point.date,
+          gmv: 0,
+          orders: 0,
+          hours: 0,
+          sessionLabel: "Daily total"
+        };
+      }
+
+      days[date].gmv += point.gmv;
+      days[date].orders = (days[date].orders ?? 0) + (point.orders ?? 0);
+      days[date].hours = (days[date].hours ?? 0) + (point.hours ?? 0);
+      return days;
+    }, {})
+  )
+    .map((point) => ({
+      ...point,
+      aov: point.orders ? point.gmv / point.orders : 0,
+      gmv_per_hour: point.hours ? point.gmv / point.hours : 0
+    }))
+    .sort((a, b) => String(a.date ?? a.label).localeCompare(String(b.date ?? b.label)));
 }
 
 function formatScheduleDate(value: string) {
@@ -1828,12 +1868,7 @@ export default function Home() {
     }, {})
   ).sort((a, b) => b.gmv - a.gmv);
 
-  const dailyTrendData = dailyMetrics.length
-    ? dailyMetrics.map((point) => ({
-        ...point,
-        label: point.date ? formatDailyTrendLabel(point.date) : point.label
-      }))
-    : sampleDailyMetrics;
+  const dailyTrendData = dailyMetrics.length ? aggregateDailyTrendPoints(dailyMetrics) : sampleDailyMetrics;
   const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
   const isShowingSampleTrend = !dailyMetrics.length;
   const currentReportDate = csvTrendDate || showInfo.date;
@@ -2086,10 +2121,13 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
   function upsertDailyTrendPoint(point: TrendPoint) {
     setDailyMetrics((current) => {
-      const next = [...current.filter((item) => item.date !== point.date), point]
+      const pointId = point.id ?? createTrendId(point.date ?? point.label, point.sessionLabel ?? point.label);
+      const normalizedPoint = { ...point, id: pointId };
+      const next = [...current.filter((item) => (item.id ?? createTrendId(item.date ?? item.label, item.sessionLabel ?? item.label)) !== pointId), normalizedPoint]
         .sort((a, b) => String(a.date ?? a.label).localeCompare(String(b.date ?? b.label)))
-        .slice(-21);
-      setSelectedDailyTrendIndex(Math.max(next.findIndex((item) => item.date === point.date), 0));
+        .slice(-80);
+      const aggregated = aggregateDailyTrendPoints(next);
+      setSelectedDailyTrendIndex(Math.max(aggregated.findIndex((item) => item.date === point.date), 0));
       return next;
     });
   }
@@ -2102,12 +2140,15 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     const gmvPerHour = parseNumber(manualTrendGmvPerHour);
 
     upsertDailyTrendPoint({
+      id: createTrendId(date, "manual-total"),
       label: formatDailyTrendLabel(date),
       date,
       gmv,
       gmv_per_hour: gmvPerHour,
       aov,
-      orders
+      orders,
+      hours: gmvPerHour ? gmv / gmvPerHour : 0,
+      sessionLabel: "Manual total"
     });
     showToast(`Trend saved for ${formatDailyTrendLabel(date)}.`);
   }
@@ -2130,10 +2171,11 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
     setDailyMetrics((current) => {
       const next = current.filter((point) => point.date !== selectedDailyTrend.date);
-      setSelectedDailyTrendIndex(Math.max(Math.min(selectedDailyTrendIndex, next.length - 1), 0));
+      const aggregated = aggregateDailyTrendPoints(next);
+      setSelectedDailyTrendIndex(Math.max(Math.min(selectedDailyTrendIndex, aggregated.length - 1), 0));
       return next;
     });
-    showToast(`${selectedDailyTrend.label} removed from trend history.`);
+    showToast(`${selectedDailyTrend.label} removed from trend history, including all sessions that day.`);
   }
 
   function saveCurrentNotesToRecords() {
@@ -2664,14 +2706,14 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     setSalesItems(rows);
     setSalesOutputs(generatedOutputs);
     const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
-    const dailyPoint = buildDailyTrendPoint(rows, trendDate, showInfo.livestreamHours);
+    const dailyPoint = buildDailyTrendPoint(rows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
     upsertDailyTrendPoint(dailyPoint);
     setCsvTrendDate(trendDate);
     const firstSellable = rows.find((item) => !item.isGiveaway && item.costPerItem > 0);
     setSelectedSkuId(firstSellable?.id ?? rows[0]?.id ?? "");
     setActiveLayer(null);
     setCpiView("all");
-    setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. Daily trend saved for ${dailyPoint.label}.`);
+    setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. Session saved for ${dailyPoint.label}; same-day sessions are combined in the trend.`);
     setReportStatus("Draft updated");
     event.target.value = "";
     showToast("CSV imported and report refreshed.");
@@ -2879,6 +2921,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                   <h3>Daily performance trend</h3>
                   <p>
                     Selected: {selectedDailyTrend?.label ?? "No day"} · {formatTrendValue(trendMetric, selectedDailyTrend ? getTrendValue(selectedDailyTrend, trendMetric) : 0)}
+                    {selectedDailyTrend?.orders ? ` · ${Math.round(selectedDailyTrend.orders).toLocaleString()} orders` : ""}
                   </p>
                 </div>
                 <SegmentedControl<TrendMetric>
@@ -2905,6 +2948,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                   <button className="primary-button mini-button" type="button" onClick={saveManualTrendPoint}>Add / Update</button>
                   <button className="text-button danger-text mini-button" type="button" onClick={deleteSelectedTrendPoint} disabled={isShowingSampleTrend || !selectedDailyTrend?.date}>Delete selected</button>
                 </div>
+                <p className="trend-editor-note">Same-day CSV uploads are combined into one daily trend point. Delete selected removes all sessions for that day.</p>
               </div>
             </article>
 

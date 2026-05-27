@@ -724,6 +724,14 @@ dt,
   justify-content: flex-end;
 }
 
+.trend-editor-note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+}
+
 .shift-list,
 .alert-list {
   display: grid;
