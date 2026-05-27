@@ -1769,6 +1769,14 @@ td {
   gap: 14px;
 }
 
+.record-log-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .record-summary-grid {
   display: grid;
   gap: 12px;

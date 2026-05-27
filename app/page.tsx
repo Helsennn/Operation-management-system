@@ -1520,6 +1520,7 @@ export default function Home() {
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
   const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
   const [recordCategoryFilter, setRecordCategoryFilter] = useState<OpsRecordCategory | "all">("all");
+  const [recordDateFilter, setRecordDateFilter] = useState("all");
   const [dailyMetrics, setDailyMetrics] = useState<TrendPoint[]>([]);
   const [weeklyMetrics, setWeeklyMetrics] = useState<TrendPoint[]>([]);
   const [csvStatus, setCsvStatus] = useState("Sample data loaded. Upload a Whatnot CSV to replace it.");
@@ -1913,6 +1914,12 @@ export default function Home() {
   const recordPatternText = repeatedRecordCategories.length
     ? `Most repeated: ${repeatedRecordCategories.join(", ")}. Use this as an AI-ready issue pool.`
     : "Save records over time to surface repeated traffic, inventory, host, or competitor patterns.";
+  const recordDateOptions = Array.from(
+    new Set([
+      ...opsRecords.map((record) => record.date).filter(Boolean),
+      ...reportHistory.map((report) => report.date).filter(Boolean)
+    ])
+  ).sort((a, b) => b.localeCompare(a));
   const groupedOpsRecordMap =
     filteredOpsRecords.reduce<Record<string, { date: string; records: OpsRecord[] }>>((groups, record) => {
       const key = record.date || "No date";
@@ -1939,6 +1946,7 @@ export default function Home() {
       reports: recordCategoryFilter === "all" ? groupedReportMap[date]?.reports ?? [] : []
     }))
     .filter((group) => group.records.length || group.reports.length)
+    .filter((group) => recordDateFilter === "all" || group.date === recordDateFilter)
     .sort((a, b) => b.date.localeCompare(a.date));
   const latestRecordGroup = groupedOpsRecordDays[0];
   function getMagnetDisplay(metricId: MagnetMetric) {
@@ -2141,9 +2149,10 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     }
 
     const createdAt = new Date().toISOString();
+    const recordDate = csvTrendDate || showInfo.date;
     const newRecords = entries.map(([category, note], index) => ({
       id: `record-${Date.now()}-${index}`,
-      date: showInfo.date,
+      date: recordDate,
       showName: showInfo.showName,
       category,
       severity: "medium" as OpsRecordSeverity,
@@ -2156,9 +2165,10 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function saveGeneratedReportSnapshot() {
+    const reportDate = csvTrendDate || showInfo.date;
     const snapshot: ReportSnapshot = {
       id: `report-${Date.now()}`,
-      date: showInfo.date,
+      date: reportDate,
       showName: showInfo.showName,
       report: generatedReport,
       createdAt: new Date().toISOString()
@@ -3419,14 +3429,25 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                   <h3>Cumulative ops log</h3>
                   <p>{recordPatternText}</p>
                 </div>
-                <label className="compact-select">
-                  <span>Filter</span>
-                  <select value={recordCategoryFilter} onChange={(event) => setRecordCategoryFilter(event.target.value as OpsRecordCategory | "all")}>
-                    {recordCategoryOptions.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="record-log-controls">
+                  <label className="compact-select">
+                    <span>Log day</span>
+                    <select value={recordDateFilter} onChange={(event) => setRecordDateFilter(event.target.value)}>
+                      <option value="all">All days</option>
+                      {recordDateOptions.map((date) => (
+                        <option key={date} value={date}>{formatDailyTrendLabel(date)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="compact-select">
+                    <span>Filter</span>
+                    <select value={recordCategoryFilter} onChange={(event) => setRecordCategoryFilter(event.target.value as OpsRecordCategory | "all")}>
+                      {recordCategoryOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div className="record-summary-grid">
