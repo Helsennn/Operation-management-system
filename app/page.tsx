@@ -2115,6 +2115,11 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     setShowInfo((current) => ({ ...current, [key]: value }));
   }
 
+  function updateReportDate(date: string) {
+    setCsvTrendDate(date);
+    updateShow("date", date);
+  }
+
   function updateNotes<K extends keyof OpsNotes>(key: K, value: OpsNotes[K]) {
     setOpsNotes((current) => ({ ...current, [key]: value }));
   }
@@ -2708,7 +2713,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
     const dailyPoint = buildDailyTrendPoint(rows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
     upsertDailyTrendPoint(dailyPoint);
-    setCsvTrendDate(trendDate);
+    updateReportDate(trendDate);
     const firstSellable = rows.find((item) => !item.isGiveaway && item.costPerItem > 0);
     setSelectedSkuId(firstSellable?.id ?? rows[0]?.id ?? "");
     setActiveLayer(null);
@@ -3222,7 +3227,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 </label>
                 <label className="inline-date-field">
                   Trend date
-                  <input type="date" value={csvTrendDate} onChange={(event) => setCsvTrendDate(event.target.value)} />
+                  <input type="date" value={csvTrendDate} onChange={(event) => updateReportDate(event.target.value)} />
                 </label>
                 <button className="secondary-button clear-data-button" type="button" onClick={clearCsvData} disabled={!salesItems.length && !salesOutputs}>
                   <Eraser aria-hidden="true" size={16} />
@@ -3232,7 +3237,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
             </div>
 
             <div className="form-grid">
-              <label>Date<input type="date" value={showInfo.date} onChange={(event) => updateShow("date", event.target.value)} /></label>
+              <label>Date<input type="date" value={showInfo.date} onChange={(event) => updateReportDate(event.target.value)} /></label>
               <label>Show name<input value={showInfo.showName} onChange={(event) => updateShow("showName", event.target.value)} /></label>
               <label>Show type<select value={showInfo.showType} onChange={(event) => updateShow("showType", event.target.value)}>
                 <option>Normal Show</option>
@@ -3240,8 +3245,22 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <option>Clearance Show</option>
                 <option>Test Show</option>
               </select></label>
-              <label>Livestream hours<input type="number" min="0" step="0.25" value={showInfo.livestreamHours} onChange={(event) => updateShow("livestreamHours", Number(event.target.value))} /></label>
-              <label>Bookmarks<input type="number" min="0" value={showInfo.bookmarks} onChange={(event) => updateShow("bookmarks", Number(event.target.value))} /></label>
+              <div className="number-field">
+                <span>Livestream hours</span>
+                <div className="number-stepper">
+                  <button type="button" onClick={() => updateShow("livestreamHours", Math.max(0, Number((showInfo.livestreamHours - 0.25).toFixed(2))))}>-</button>
+                  <input inputMode="decimal" type="number" min="0" step="0.25" value={showInfo.livestreamHours} onChange={(event) => updateShow("livestreamHours", Number(event.target.value))} />
+                  <button type="button" onClick={() => updateShow("livestreamHours", Number((showInfo.livestreamHours + 0.25).toFixed(2)))}>+</button>
+                </div>
+              </div>
+              <div className="number-field">
+                <span>Bookmarks</span>
+                <div className="number-stepper">
+                  <button type="button" onClick={() => updateShow("bookmarks", Math.max(0, showInfo.bookmarks - 10))}>-10</button>
+                  <input inputMode="numeric" type="number" min="0" value={showInfo.bookmarks} onChange={(event) => updateShow("bookmarks", Number(event.target.value))} />
+                  <button type="button" onClick={() => updateShow("bookmarks", showInfo.bookmarks + 10)}>+10</button>
+                </div>
+              </div>
               <label>On-time start<select value={showInfo.onTimeStart} onChange={(event) => updateShow("onTimeStart", event.target.value)}>
                 <option>YES</option>
                 <option>NO</option>

@@ -1337,12 +1337,53 @@ dd {
 }
 
 .form-grid label,
+.number-field,
 .note-field {
   color: var(--muted-strong);
   display: grid;
   font-size: 13px;
   font-weight: 700;
   gap: 7px;
+}
+
+.number-field > span {
+  color: var(--muted-strong);
+}
+
+.number-stepper {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  min-height: 44px;
+  padding: 4px;
+}
+
+.number-stepper input {
+  border: 0;
+  box-shadow: none;
+  min-height: 36px;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.number-stepper button {
+  background: rgba(0, 122, 255, 0.1);
+  border: 0;
+  border-radius: 8px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 850;
+  height: 36px;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.number-stepper button:hover {
+  background: rgba(0, 122, 255, 0.16);
+  transform: translateY(-1px);
 }
 
 input,
