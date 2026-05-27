@@ -913,7 +913,7 @@ function buildDailyTrendPoint(items: SalesItem[], dateValue: string, livestreamH
   const gmvPerHour = livestreamHours ? gmv / livestreamHours : 0;
 
   return {
-    label: formatShortScheduleDate(date),
+    label: formatDailyTrendLabel(date),
     date,
     gmv,
     gmv_per_hour: gmvPerHour,
@@ -937,6 +937,12 @@ function formatShortScheduleDate(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
   return `${Number(match[2])}/${Number(match[3])}`;
+}
+
+function formatDailyTrendLabel(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  return `${formatShortScheduleDate(value)} ${getScheduleDayName(value)}`;
 }
 
 function getScheduleDayName(value: string) {
@@ -1755,7 +1761,12 @@ export default function Home() {
     }, {})
   ).sort((a, b) => b.gmv - a.gmv);
 
-  const dailyTrendData = dailyMetrics.length ? dailyMetrics : sampleDailyMetrics;
+  const dailyTrendData = dailyMetrics.length
+    ? dailyMetrics.map((point) => ({
+        ...point,
+        label: point.date ? formatDailyTrendLabel(point.date) : point.label
+      }))
+    : sampleDailyMetrics;
   const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
   const externalWeeklyTrendData = (externalDashboard?.weekly ?? []).map<TrendPoint>((week) => ({
     label: week.week,
