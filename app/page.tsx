@@ -133,6 +133,14 @@ type OpsRecord = {
   createdAt: string;
 };
 
+type ReportSnapshot = {
+  id: string;
+  date: string;
+  showName: string;
+  report: string;
+  createdAt: string;
+};
+
 type StrategyGroup = {
   id: string;
   label: string;
@@ -895,6 +903,24 @@ function compactReportText(value: string | undefined, fallback: string, maxLengt
   return `${normalized.slice(0, maxLength - 1).trim()}...`;
 }
 
+function shortProductName(value: string) {
+  const cleaned = value
+    .replace(/^HOU:\s*/i, "")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/#\d+\b/g, "")
+    .replace(/\b(with|for|and|the|set|pack|pcs|piece|pieces|new|brand)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned.split(" ").filter(Boolean);
+  if (words.length <= 4) return cleaned || value;
+  return words.slice(0, 4).join(" ");
+}
+
+function formatCompactItems(items: SalesItem[], fallback: string, limit = 3) {
+  const selected = items.slice(0, limit).map((item) => shortProductName(item.productName));
+  return selected.length ? selected.join(", ") : fallback;
+}
+
 function formatReportItems(items: string[], fallback: string, limit = 3) {
   const selected = items.filter(Boolean).slice(0, limit);
   return selected.length ? selected.join("; ") : fallback;
@@ -1413,6 +1439,7 @@ type CloudStateKey =
   | "opsNotes"
   | "strategyGroups"
   | "opsRecords"
+  | "reportHistory"
   | "dailyMetrics";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -1491,6 +1518,7 @@ export default function Home() {
   const [opsNotes, setOpsNotes] = useState<OpsNotes>(initialNotes);
   const [strategyGroups, setStrategyGroups] = useState<StrategyGroup[]>(initialStrategyGroups);
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
+  const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
   const [recordCategoryFilter, setRecordCategoryFilter] = useState<OpsRecordCategory | "all">("all");
   const [dailyMetrics, setDailyMetrics] = useState<TrendPoint[]>([]);
   const [weeklyMetrics, setWeeklyMetrics] = useState<TrendPoint[]>([]);
@@ -1547,6 +1575,7 @@ export default function Home() {
     const localOpsNotes = readLocalJson<OpsNotes>("dailyOps.opsNotes.v1", initialNotes);
     const localStrategy = readLocalJson<StrategyGroup[]>("dailyOps.strategyGroups.v1", initialStrategyGroups);
     const localRecords = readLocalJson<OpsRecord[]>("dailyOps.opsRecords.v1", initialOpsRecords);
+    const localReportHistory = readLocalJson<ReportSnapshot[]>("dailyOps.reportHistory.v1", []);
     const localDailyMetrics = readLocalJson<TrendPoint[]>("dailyOps.dailyMetrics.v1", []);
 
     if (Array.isArray(localSalesItems)) setSalesItems(localSalesItems);
@@ -1557,6 +1586,7 @@ export default function Home() {
     setOpsNotes(localOpsNotes);
     if (Array.isArray(localStrategy)) setStrategyGroups(localStrategy);
     if (Array.isArray(localRecords)) setOpsRecords(localRecords);
+    if (Array.isArray(localReportHistory)) setReportHistory(localReportHistory);
     if (Array.isArray(localDailyMetrics)) setDailyMetrics(localDailyMetrics);
     window.setTimeout(() => {
       localReady.current = true;
@@ -1577,6 +1607,7 @@ export default function Home() {
           cloudOpsNotes,
           cloudStrategy,
           cloudRecords,
+          cloudReportHistory,
           cloudDailyMetrics
         ] = await Promise.all([
           loadCloudValue<ScheduledShow[]>("scheduledShows"),
@@ -1585,6 +1616,7 @@ export default function Home() {
           loadCloudValue<OpsNotes>("opsNotes"),
           loadCloudValue<StrategyGroup[]>("strategyGroups"),
           loadCloudValue<OpsRecord[]>("opsRecords"),
+          loadCloudValue<ReportSnapshot[]>("reportHistory"),
           loadCloudValue<TrendPoint[]>("dailyMetrics"),
         ]);
 
@@ -1596,6 +1628,7 @@ export default function Home() {
         if (cloudOpsNotes) setOpsNotes(cloudOpsNotes);
         if (Array.isArray(cloudStrategy)) setStrategyGroups(cloudStrategy);
         if (Array.isArray(cloudRecords)) setOpsRecords(cloudRecords);
+        if (Array.isArray(cloudReportHistory)) setReportHistory(cloudReportHistory);
         if (Array.isArray(cloudDailyMetrics)) setDailyMetrics(cloudDailyMetrics);
         setCloudStatus("Cloud sync connected.");
       } catch {
@@ -1633,6 +1666,12 @@ export default function Home() {
     window.localStorage.setItem("dailyOps.opsRecords.v1", JSON.stringify(opsRecords));
     queueCloudSave("opsRecords", opsRecords);
   }, [opsRecords]);
+
+  useEffect(() => {
+    if (!localReady.current) return;
+    window.localStorage.setItem("dailyOps.reportHistory.v1", JSON.stringify(reportHistory));
+    queueCloudSave("reportHistory", reportHistory);
+  }, [reportHistory]);
 
   useEffect(() => {
     if (!localReady.current) return;
@@ -1874,14 +1913,33 @@ export default function Home() {
   const recordPatternText = repeatedRecordCategories.length
     ? `Most repeated: ${repeatedRecordCategories.join(", ")}. Use this as an AI-ready issue pool.`
     : "Save records over time to surface repeated traffic, inventory, host, or competitor patterns.";
-  const groupedOpsRecordDays = Object.values(
+  const groupedOpsRecordMap =
     filteredOpsRecords.reduce<Record<string, { date: string; records: OpsRecord[] }>>((groups, record) => {
       const key = record.date || "No date";
       if (!groups[key]) groups[key] = { date: key, records: [] };
       groups[key].records.push(record);
       return groups;
-    }, {})
-  ).sort((a, b) => b.date.localeCompare(a.date));
+    }, {});
+  const groupedReportMap =
+    reportHistory.reduce<Record<string, { date: string; reports: ReportSnapshot[] }>>((groups, report) => {
+      const key = report.date || "No date";
+      if (!groups[key]) groups[key] = { date: key, reports: [] };
+      groups[key].reports.push(report);
+      return groups;
+    }, {});
+  const groupedOpsRecordDays = Array.from(
+    new Set([
+      ...Object.keys(groupedOpsRecordMap),
+      ...(recordCategoryFilter === "all" ? Object.keys(groupedReportMap) : [])
+    ])
+  )
+    .map((date) => ({
+      date,
+      records: groupedOpsRecordMap[date]?.records ?? [],
+      reports: recordCategoryFilter === "all" ? groupedReportMap[date]?.reports ?? [] : []
+    }))
+    .filter((group) => group.records.length || group.reports.length)
+    .sort((a, b) => b.date.localeCompare(a.date));
   const latestRecordGroup = groupedOpsRecordDays[0];
   function getMagnetDisplay(metricId: MagnetMetric) {
     const label = magnetMetricOptions.find((option) => option.id === metricId)?.label ?? "Metric";
@@ -1935,82 +1993,75 @@ export default function Home() {
   }, [cpiChartRows, salesItems, selectedSkuId]);
 
   const generatedReport = useMemo(() => {
-    const mainCategories = categories.join(", ") || "No category detected";
-    const winningItems = formatReportItems(
-      skuGroups.winners.map((item) => `${item.productName} (${formatPercent(getCpiRate(item))} CPI)`),
-      "No 100%+ CPI SKU detected"
-    );
-    const weakItems = formatReportItems(
-      skuGroups.risk.map((item) => `${item.productName} (${formatPercent(getCpiRate(item))} CPI)`),
-      "No below-80% CPI SKU detected"
-    );
-    const highGmvItems = formatReportItems(
-      salesItems
-        .filter((item) => !item.isGiveaway)
-        .sort((a, b) => b.totalSales - a.totalSales)
-        .map((item) => `${item.productName} (${decimalCurrency.format(item.totalSales)})`),
-      "No sales item detected"
-    );
-    const giveawayUsed = skuGroups.giveaways.map((item) => item.productName).join(", ") || "None recorded";
-    const actionsTaken = opsNotes.actions.join("; ");
-    const optionalLine = (label: string, value: string) => value.trim() ? `- ${label}: ${compactReportText(value, "", 150)}` : "";
-    const optionalLines = (lines: string[]) => lines.filter(Boolean).join("\n");
+    const topCategories = categories.slice(0, 3).join(", ") || "No category detected";
+    const topGmvItems = salesItems.filter((item) => !item.isGiveaway).sort((a, b) => b.totalSales - a.totalSales);
+    const winningItems = formatCompactItems(skuGroups.winners, "No 100%+ CPI SKU", 3);
+    const weakItems = formatCompactItems(skuGroups.risk, "No major drag SKU", 2);
+    const highGmvItems = formatCompactItems(topGmvItems, "No sales item", 3);
+    const giveawayItems = skuGroups.giveaways;
+    const giveawayUsed = giveawayItems.length
+      ? giveawayItems.map((item) => `${shortProductName(item.productName)} x${Math.round(item.orders)}`).join(", ")
+      : "None detected in CSV";
+    const actionsTaken = opsNotes.actions.slice(0, 4).join("; ");
+    const noteContext = [
+      opsNotes.kpiContext ? `Strategy: ${compactReportText(opsNotes.kpiContext, "", 110)}` : "",
+      opsNotes.traffic ? `Traffic: ${compactReportText(opsNotes.traffic, "", 110)}` : "",
+      opsNotes.competitor ? `Competitor: ${compactReportText(opsNotes.competitor, "", 95)}` : "",
+      opsNotes.host ? `Host: ${compactReportText(opsNotes.host, "", 90)}` : "",
+      opsNotes.inventory ? `Inventory: ${compactReportText(opsNotes.inventory, "", 90)}` : ""
+    ].filter(Boolean);
+    const previousTrend = dailyMetrics
+      .filter((point) => point.date && point.date < showInfo.date)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .slice(0, 3);
+    const previousAvgGmv = previousTrend.length ? previousTrend.reduce((sum, point) => sum + point.gmv, 0) / previousTrend.length : 0;
+    const previousAvgAov = previousTrend.length ? previousTrend.reduce((sum, point) => sum + (point.aov ?? 0), 0) / previousTrend.length : 0;
+    const trendText = previousTrend.length
+      ? `Compared with recent ${previousTrend.length}-day avg, GMV was ${metrics.gmv >= previousAvgGmv ? "above" : "below"} trend (${decimalCurrency.format(previousAvgGmv)} avg) and AOV was ${metrics.aov >= previousAvgAov ? "stronger" : "softer"}.`
+      : "No recent daily trend baseline yet.";
     const cpiText =
       metrics.targetPriceCompletion >= 0.8
-        ? "Pricing stayed above the 80% line."
-        : "Pricing fell below the 80% line.";
+        ? "Pricing stayed above the 80% line"
+        : "Pricing fell below the 80% line";
     const marginText =
       metrics.gmv > 1000 && metrics.profitMargin < 0
-        ? "GMV was volume-driven, but margin was compressed."
-        : "Margin was supported by selective product exposure.";
+        ? "GMV was volume-driven while margin was compressed"
+        : "Margin was supported by selective exposure";
     const nextFocus =
       metrics.targetPriceCompletion < 0.8
-        ? "Prioritize stronger 100%+ CPI SKUs and reduce exposure for below-80% items."
-        : "Keep pushing winning SKUs while protecting high-cost inventory during weak traffic.";
+        ? "Push stronger CPI SKUs and reduce drag exposure."
+        : "Keep winners visible and protect high-cost items in weak bidding.";
 
     return `Daily Show Summary
 
 Date: ${showInfo.date}
 Show: ${showInfo.showName}
-Hours: ${showInfo.livestreamHours} | On-Time Start: ${showInfo.onTimeStart}
+Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 
-1. KPI Snapshot
+1. KPI
 - GMV: ${decimalCurrency.format(metrics.gmv)} | GMV / Hour: ${decimalCurrency.format(metrics.gmvPerHour)}
-- AOV: ${decimalCurrency.format(metrics.aov)} | CPI: ${decimalCurrency.format(metrics.cpi)}
-- Target Completion: ${formatPercent(metrics.targetPriceCompletion)} (80% line: ${decimalCurrency.format(metrics.aov80Line)} | 100% line: ${decimalCurrency.format(metrics.aov100Line)})
-- Profit Margin: ${formatPercent(metrics.profitMargin)} | Bookmarks: ${showInfo.bookmarks}
+- AOV: ${decimalCurrency.format(metrics.aov)} | CPI: ${decimalCurrency.format(metrics.cpi)} | Target: ${formatPercent(metrics.targetPriceCompletion)}
+- Margin: ${formatPercent(metrics.profitMargin)} | Orders: ${metrics.orders} | Bookmarks: ${showInfo.bookmarks}
 
 2. What Was Sold
-- Main categories: ${mainCategories}
-- Winning items: ${winningItems}
-- High GMV items: ${highGmvItems}
-- Drag items: ${weakItems}
+- Mix: ${topCategories}
+- Winners: ${winningItems}
+- Top GMV: ${highGmvItems}
+- Drag: ${weakItems}
 
 3. Promotion / Giveaway
-- Used: ${giveawayUsed}
-- Estimated cost: ${decimalCurrency.format(metrics.giveawayCost)}
-${optionalLine("Notes", opsNotes.giveaway)}
+- CSV giveaways: ${giveawayUsed}
+- Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}
 
 4. Game / Strategy
-${optionalLines([
-      actionsTaken ? `- Strategy tags: ${actionsTaken}` : "",
-      optionalLine("Game plan", opsNotes.kpiContext),
-      optionalLine("Traffic", opsNotes.traffic),
-      optionalLine("Competitor", opsNotes.competitor)
-    ]) || "- No strategy or traffic notes added"}
+- Tags: ${actionsTaken || "None selected"}
+${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No extra notes added"}
 
-5. Team / Inventory Notes
-${optionalLines([
-      optionalLine("Host / audience", opsNotes.host),
-      optionalLine("Inventory / clearance", opsNotes.inventory)
-    ]) || "- No team or inventory notes added"}
-
-6. Summary
-- ${cpiText}
-- ${marginText}
-${optionalLine("Game / strategy context", opsNotes.kpiContext)}
+5. Summary
+- ${cpiText}; ${marginText}.
+- ${trendText}
 - Next focus: ${nextFocus}`;
-  }, [categories, metrics, opsNotes, salesItems, showInfo, skuGroups]);
+  }, [categories, dailyMetrics, metrics, opsNotes, salesItems, showInfo, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
@@ -2104,6 +2155,22 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
     showToast(`${newRecords.length} records saved to history.`);
   }
 
+  function saveGeneratedReportSnapshot() {
+    const snapshot: ReportSnapshot = {
+      id: `report-${Date.now()}`,
+      date: showInfo.date,
+      showName: showInfo.showName,
+      report: generatedReport,
+      createdAt: new Date().toISOString()
+    };
+    setReportHistory((current) => [
+      snapshot,
+      ...current.filter((report) => !(report.date === snapshot.date && report.showName === snapshot.showName)).slice(0, 29)
+    ]);
+    setReportStatus("Saved to log");
+    showToast("Daily report saved to cumulative log.");
+  }
+
   function deleteOpsRecord(id: string) {
     setOpsRecords((current) => current.filter((record) => record.id !== id));
     showToast("Record removed.");
@@ -2113,6 +2180,19 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
     const ids = new Set(records.map((record) => record.id));
     setOpsRecords((current) => current.filter((record) => !ids.has(record.id)));
     showToast("Daily record group removed.");
+  }
+
+  function deleteReportSnapshot(id: string) {
+    setReportHistory((current) => current.filter((report) => report.id !== id));
+    showToast("Saved report removed.");
+  }
+
+  function deleteOpsLogDay(records: OpsRecord[], reports: ReportSnapshot[]) {
+    const recordIds = new Set(records.map((record) => record.id));
+    const reportIds = new Set(reports.map((report) => report.id));
+    setOpsRecords((current) => current.filter((record) => !recordIds.has(record.id)));
+    setReportHistory((current) => current.filter((report) => !reportIds.has(report.id)));
+    showToast("Daily log group removed.");
   }
 
   function applyRecordToReport(record: OpsRecord) {
@@ -2677,6 +2757,7 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
   function markReviewed() {
     setReportStatus("Reviewed");
     setCsvStatus("Daily report marked as reviewed.");
+    saveGeneratedReportSnapshot();
     showToast("Daily report marked as reviewed.");
   }
 
@@ -3223,6 +3304,7 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
                       <Send aria-hidden="true" size={16} />
                       Copy & open Lark
                     </button>
+                    <button className="secondary-button" type="button" onClick={saveGeneratedReportSnapshot}>Save report</button>
                     <button className="primary-button" type="button" onClick={markReviewed}>Mark reviewed</button>
                   </div>
                 </div>
@@ -3376,19 +3458,41 @@ ${optionalLine("Game / strategy context", opsNotes.kpiContext)}
                   return (
                   <article className="record-day-card" key={group.date}>
                     <div>
-                      <span>{formatScheduleDate(group.date)} · {group.records.length} saved inputs</span>
-                      <strong>{Array.from(new Set(group.records.map((record) => record.showName))).join(", ")}</strong>
-                      <p>{topNotes.length ? topNotes.join(" | ") : "Only strategy tags were saved for this day."}</p>
+                      <span>{formatScheduleDate(group.date)} · {group.records.length} notes · {group.reports.length} report{group.reports.length === 1 ? "" : "s"}</span>
+                      <strong>{Array.from(new Set([...group.records.map((record) => record.showName), ...group.reports.map((report) => report.showName)])).filter(Boolean).join(", ") || "Saved log"}</strong>
+                      <p>{topNotes.length ? topNotes.join(" | ") : group.reports.length ? "Generated report saved for this day." : "Only strategy tags were saved for this day."}</p>
                       {strategyRecord ? <small>Strategy: {compactReportText(strategyRecord.note, "", 140)}</small> : null}
                       <div className="record-category-pills">
                         {Object.entries(categoryCounts).map(([category, count]) => (
                           <span key={`${group.date}-${category}`}>{recordCategoryLabels[category as OpsRecordCategory]} · {count}</span>
                         ))}
+                        {group.reports.map((report) => (
+                          <span key={`${group.date}-${report.id}`}>Report · {new Date(report.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                        ))}
                       </div>
+                      {group.records.length ? (
+                        <details className="record-details">
+                          <summary>View notes</summary>
+                          {group.records.map((record) => (
+                            <p key={`note-${record.id}`}><strong>{recordCategoryLabels[record.category]}:</strong> {record.note}</p>
+                          ))}
+                        </details>
+                      ) : null}
+                      {group.reports.length ? (
+                        <details className="record-details report-details">
+                          <summary>View generated report</summary>
+                          {group.reports.map((report) => (
+                            <div key={`report-${report.id}`}>
+                              <pre>{report.report}</pre>
+                              <button className="text-button danger-text mini-button" type="button" onClick={() => deleteReportSnapshot(report.id)}>Delete report</button>
+                            </div>
+                          ))}
+                        </details>
+                      ) : null}
                     </div>
                     <div className="record-day-actions">
-                      <button className="secondary-button mini-button" type="button" onClick={() => applyRecordGroupToReport(group.records)}>Use day</button>
-                      <button className="text-button danger-text mini-button" type="button" onClick={() => deleteOpsRecordGroup(group.records)}>Delete day</button>
+                      <button className="secondary-button mini-button" type="button" onClick={() => applyRecordGroupToReport(group.records)} disabled={!group.records.length}>Use day</button>
+                      <button className="text-button danger-text mini-button" type="button" onClick={() => deleteOpsLogDay(group.records, group.reports)}>Delete day</button>
                     </div>
                   </article>
                   );

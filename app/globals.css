@@ -1854,6 +1854,38 @@ td {
   padding: 6px 8px;
 }
 
+.record-details {
+  background: rgba(238, 242, 247, 0.58);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 10px;
+  padding: 9px 11px;
+}
+
+.record-details summary {
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.record-details p {
+  margin: 8px 0 0;
+}
+
+.record-details pre {
+  background: #111827;
+  border-radius: 10px;
+  color: #f9fafb;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 10px 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .record-day-actions {
   display: grid;
   gap: 6px;
