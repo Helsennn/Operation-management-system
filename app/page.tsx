@@ -662,6 +662,26 @@ function inferCategory(productName: string) {
   return prefix || "Other";
 }
 
+function parseSkuExclusionRules(value: string) {
+  return value
+    .split(/[,，;；\n]+/)
+    .map((rule) => rule.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function isSkuExcludedByRules(item: SalesItem, rulesText: string) {
+  const rules = parseSkuExclusionRules(rulesText);
+  if (!rules.length) return false;
+
+  const productName = item.productName.trim().toUpperCase();
+  const prefix = inferCategory(item.productName).toUpperCase();
+  return rules.some((rule) => prefix === rule || productName.startsWith(rule));
+}
+
+function applySkuExclusions(items: SalesItem[], rulesText: string) {
+  return items.filter((item) => !isSkuExcludedByRules(item, rulesText));
+}
+
 function isGiveawayProduct(productName: string) {
   const name = productName.toLowerCase();
   const excluded = /\b(usps|shipping|ship|label|postage|delivery|freight)\b/.test(name);
@@ -1562,6 +1582,7 @@ type CloudStateKey =
   | "showInfo"
   | "opsNotes"
   | "recordTiles"
+  | "skuExclusionRules"
   | "strategyGroups"
   | "opsRecords"
   | "reportHistory"
@@ -1642,6 +1663,7 @@ export default function Home() {
   const [showInfo, setShowInfo] = useState<ShowInfo>(initialShow);
   const [opsNotes, setOpsNotes] = useState<OpsNotes>(initialNotes);
   const [recordTiles, setRecordTiles] = useState<RecordNoteTile[]>(initialRecordTiles);
+  const [skuExclusionRules, setSkuExclusionRules] = useState("530, EVENT");
   const [strategyGroups, setStrategyGroups] = useState<StrategyGroup[]>(initialStrategyGroups);
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
   const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
@@ -1702,6 +1724,7 @@ export default function Home() {
     const localShowInfo = readLocalJson<ShowInfo>("dailyOps.showInfo.v1", initialShow);
     const localOpsNotes = readLocalJson<OpsNotes>("dailyOps.opsNotes.v1", initialNotes);
     const localRecordTiles = readLocalJson<RecordNoteTile[]>("dailyOps.recordTiles.v1", createRecordTiles(localOpsNotes));
+    const localSkuExclusionRules = readLocalJson<string>("dailyOps.skuExclusionRules.v1", "530, EVENT");
     const localStrategy = readLocalJson<StrategyGroup[]>("dailyOps.strategyGroups.v1", initialStrategyGroups);
     const localRecords = readLocalJson<OpsRecord[]>("dailyOps.opsRecords.v1", initialOpsRecords);
     const localReportHistory = readLocalJson<ReportSnapshot[]>("dailyOps.reportHistory.v1", []);
@@ -1714,6 +1737,7 @@ export default function Home() {
     setShowInfo(localShowInfo);
     setOpsNotes(localOpsNotes);
     if (Array.isArray(localRecordTiles)) setRecordTiles(localRecordTiles);
+    setSkuExclusionRules(localSkuExclusionRules);
     if (Array.isArray(localStrategy)) setStrategyGroups(localStrategy);
     if (Array.isArray(localRecords)) setOpsRecords(localRecords);
     if (Array.isArray(localReportHistory)) setReportHistory(localReportHistory);
@@ -1736,6 +1760,7 @@ export default function Home() {
           cloudShowInfo,
           cloudOpsNotes,
           cloudRecordTiles,
+          cloudSkuExclusionRules,
           cloudStrategy,
           cloudRecords,
           cloudReportHistory,
@@ -1746,6 +1771,7 @@ export default function Home() {
           loadCloudValue<ShowInfo>("showInfo"),
           loadCloudValue<OpsNotes>("opsNotes"),
           loadCloudValue<RecordNoteTile[]>("recordTiles"),
+          loadCloudValue<string>("skuExclusionRules"),
           loadCloudValue<StrategyGroup[]>("strategyGroups"),
           loadCloudValue<OpsRecord[]>("opsRecords"),
           loadCloudValue<ReportSnapshot[]>("reportHistory"),
@@ -1763,6 +1789,7 @@ export default function Home() {
         } else if (cloudOpsNotes) {
           setRecordTiles(createRecordTiles(cloudOpsNotes));
         }
+        if (typeof cloudSkuExclusionRules === "string") setSkuExclusionRules(cloudSkuExclusionRules);
         if (Array.isArray(cloudStrategy)) setStrategyGroups(cloudStrategy);
         if (Array.isArray(cloudRecords)) setOpsRecords(cloudRecords);
         if (Array.isArray(cloudReportHistory)) setReportHistory(cloudReportHistory);
@@ -1836,6 +1863,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!localReady.current) return;
+    window.localStorage.setItem("dailyOps.skuExclusionRules.v1", JSON.stringify(skuExclusionRules));
+    queueCloudSave("skuExclusionRules", skuExclusionRules);
+  }, [skuExclusionRules]);
+
+  useEffect(() => {
+    if (!localReady.current) return;
     window.localStorage.setItem("dailyOps.strategyGroups.v1", JSON.stringify(strategyGroups));
     queueCloudSave("strategyGroups", strategyGroups);
   }, [strategyGroups]);
@@ -1886,14 +1919,25 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  const activeSalesItems = useMemo(() => applySkuExclusions(salesItems, skuExclusionRules), [salesItems, skuExclusionRules]);
+  const excludedSalesItems = useMemo(
+    () => salesItems.filter((item) => isSkuExcludedByRules(item, skuExclusionRules)),
+    [salesItems, skuExclusionRules]
+  );
+  const excludedSalesSummary = useMemo(() => {
+    const gmv = excludedSalesItems.reduce((sum, item) => sum + item.totalSales, 0);
+    const orders = excludedSalesItems.reduce((sum, item) => sum + item.orders, 0);
+    return { gmv, orders, count: excludedSalesItems.length };
+  }, [excludedSalesItems]);
+
   const metrics = useMemo(() => {
-    const sellableItems = salesItems.filter((item) => !item.isGiveaway);
-    const giveawayItems = salesItems.filter((item) => item.isGiveaway);
-    const gmv = salesItems.reduce((sum, item) => sum + item.totalSales, 0);
-    const units = salesItems.reduce((sum, item) => sum + item.orders, 0);
+    const sellableItems = activeSalesItems.filter((item) => !item.isGiveaway);
+    const giveawayItems = activeSalesItems.filter((item) => item.isGiveaway);
+    const gmv = activeSalesItems.reduce((sum, item) => sum + item.totalSales, 0);
+    const units = activeSalesItems.reduce((sum, item) => sum + item.orders, 0);
     const sellableCost = sellableItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
     const giveawayCost = giveawayItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
-    const totalCost = salesItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
+    const totalCost = activeSalesItems.reduce((sum, item) => sum + item.costPerItem * item.orders, 0);
     const aov = units ? gmv / units : 0;
     const cpi = units ? totalCost / units : 0;
     const profitMargin = gmv ? (gmv - totalCost) / gmv : 0;
@@ -1915,21 +1959,21 @@ export default function Home() {
       aov80Line: cpi * 0.8,
       aov100Line: cpi
     };
-  }, [salesItems, showInfo.livestreamHours]);
+  }, [activeSalesItems, showInfo.livestreamHours]);
 
   const skuGroups = useMemo(() => {
-    const sellable = salesItems.filter((item) => !item.isGiveaway && item.costPerItem > 0);
+    const sellable = activeSalesItems.filter((item) => !item.isGiveaway && item.costPerItem > 0);
     return {
       winners: sellable.filter((item) => getCpiRate(item) >= 1).sort((a, b) => getCpiRate(b) - getCpiRate(a)),
       optimize: sellable.filter((item) => getCpiRate(item) >= 0.8 && getCpiRate(item) < 1),
       risk: sellable.filter((item) => getCpiRate(item) < 0.8).sort((a, b) => getCpiRate(a) - getCpiRate(b)),
-      giveaways: salesItems.filter((item) => item.isGiveaway)
+      giveaways: activeSalesItems.filter((item) => item.isGiveaway)
     };
-  }, [salesItems]);
+  }, [activeSalesItems]);
 
   const categories = useMemo(() => {
-    return Array.from(new Set(salesItems.filter((item) => !item.isGiveaway).map((item) => item.category)));
-  }, [salesItems]);
+    return Array.from(new Set(activeSalesItems.filter((item) => !item.isGiveaway).map((item) => item.category)));
+  }, [activeSalesItems]);
 
   const scheduleByDate = useMemo(() => {
     return [...scheduledShows].sort((a, b) => getScheduleSortKey(a).localeCompare(getScheduleSortKey(b))).reduce<Array<{ date: string; shows: ScheduledShow[] }>>((days, show) => {
@@ -1969,10 +2013,17 @@ export default function Home() {
     }, {})
   ).sort((a, b) => b.gmv - a.gmv);
 
-  const dailyTrendData = dailyMetrics.length ? aggregateDailyTrendPoints(dailyMetrics) : sampleDailyMetrics;
-  const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
-  const isShowingSampleTrend = !dailyMetrics.length;
   const currentReportDate = csvTrendDate || showInfo.date;
+  const displayedDailyMetrics = useMemo(() => {
+    if (!salesOutputs || !activeSalesItems.length) return dailyMetrics;
+    return [
+      ...dailyMetrics.filter((point) => point.date !== currentReportDate),
+      buildDailyTrendPoint(activeSalesItems, currentReportDate, showInfo.livestreamHours, "Current filtered view")
+    ];
+  }, [activeSalesItems, currentReportDate, dailyMetrics, salesOutputs, showInfo.livestreamHours]);
+  const dailyTrendData = displayedDailyMetrics.length ? aggregateDailyTrendPoints(displayedDailyMetrics) : sampleDailyMetrics;
+  const selectedDailyTrend = dailyTrendData[Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)] ?? dailyTrendData[0];
+  const isShowingSampleTrend = !displayedDailyMetrics.length;
   const externalWeeklyTrendData = (externalDashboard?.weekly ?? []).map<TrendPoint>((week) => ({
     label: week.week,
     gmv: week.gmv,
@@ -2022,7 +2073,7 @@ export default function Home() {
   const categoryContribution = categories
     .map((category) => ({
       category,
-      gmv: salesItems
+      gmv: activeSalesItems
         .filter((item) => !item.isGiveaway && item.category === category)
         .reduce((sum, item) => sum + item.totalSales, 0)
     }))
@@ -2135,22 +2186,22 @@ export default function Home() {
   }));
 
   const cpiChartRows = useMemo(() => {
-    const sellable = salesItems
+    const sellable = activeSalesItems
       .filter((item) => !item.isGiveaway && item.costPerItem > 0)
       .sort((a, b) => getCpiRate(b) - getCpiRate(a));
     if (cpiView === "winners") return skuGroups.winners;
     if (cpiView === "optimize") return skuGroups.optimize;
     if (cpiView === "risk") return skuGroups.risk;
     return sellable;
-  }, [cpiView, salesItems, skuGroups]);
+  }, [activeSalesItems, cpiView, skuGroups]);
 
   const selectedSku = useMemo(() => {
-    return salesItems.find((item) => item.id === selectedSkuId) ?? cpiChartRows[0];
-  }, [cpiChartRows, salesItems, selectedSkuId]);
+    return activeSalesItems.find((item) => item.id === selectedSkuId) ?? cpiChartRows[0];
+  }, [activeSalesItems, cpiChartRows, selectedSkuId]);
 
   const generatedReport = useMemo(() => {
     const topCategories = categories.slice(0, 3).join(", ") || "No category detected";
-    const topGmvItems = salesItems.filter((item) => !item.isGiveaway).sort((a, b) => b.totalSales - a.totalSales);
+    const topGmvItems = activeSalesItems.filter((item) => !item.isGiveaway).sort((a, b) => b.totalSales - a.totalSales);
     const winningItems = formatCompactItems(skuGroups.winners, "No 100%+ CPI SKU", 3);
     const weakItems = formatCompactItems(skuGroups.risk, "No major drag SKU", 2);
     const highGmvItems = formatCompactItems(topGmvItems, "No sales item", 3);
@@ -2203,6 +2254,7 @@ Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 - Winners: ${winningItems}
 - Top GMV: ${highGmvItems}
 - Drag: ${weakItems}
+${excludedSalesSummary.count ? `- Excluded from product mix: ${excludedSalesSummary.count} SKUs · ${decimalCurrency.format(excludedSalesSummary.gmv)} GMV · rules ${parseSkuExclusionRules(skuExclusionRules).join(", ")}` : ""}
 
 3. Promotion / Giveaway
 - CSV giveaways: ${giveawayUsed}
@@ -2215,7 +2267,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 - ${cpiText}; ${marginText}.
 - ${trendText}
 - Next focus: ${nextFocus}`;
-  }, [categories, currentReportDate, dailyMetrics, metrics, recordTiles, salesItems, showInfo, skuGroups]);
+  }, [activeSalesItems, categories, currentReportDate, dailyMetrics, excludedSalesSummary, metrics, recordTiles, showInfo, skuExclusionRules, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
@@ -2562,7 +2614,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function openSkuLayer(skuId: string) {
-    const item = salesItems.find((candidate) => candidate.id === skuId);
+    const item = activeSalesItems.find((candidate) => candidate.id === skuId);
     if (!item) return;
     setSelectedSkuId(skuId);
     setActiveLayer({ type: "sku", item });
@@ -2873,11 +2925,12 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     setSalesItems(rows);
     setSalesOutputs(generatedOutputs);
     const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
-    const dailyPoint = buildDailyTrendPoint(rows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
+    const filteredRows = applySkuExclusions(rows, skuExclusionRules);
+    const dailyPoint = buildDailyTrendPoint(filteredRows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
     upsertDailyTrendPoint(dailyPoint);
     updateReportDate(trendDate);
-    const firstSellable = rows.find((item) => !item.isGiveaway && item.costPerItem > 0);
-    setSelectedSkuId(firstSellable?.id ?? rows[0]?.id ?? "");
+    const firstSellable = filteredRows.find((item) => !item.isGiveaway && item.costPerItem > 0);
+    setSelectedSkuId(firstSellable?.id ?? filteredRows[0]?.id ?? rows[0]?.id ?? "");
     setActiveLayer(null);
     setCpiView("all");
     setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. Session saved for ${dailyPoint.label}; same-day sessions are combined in the trend.`);
@@ -3063,6 +3116,24 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
         {segment === "today" ? (
           <section className="screen-stack">
+            <article className="panel exclusion-panel global-filter-panel">
+              <div>
+                <h3>Global SKU filter</h3>
+                <p>Controls the full data view: Today KPI, trend current day, Analytics, Product Analysis, and Daily Report.</p>
+              </div>
+              <label>
+                Excluded prefixes
+                <input
+                  value={skuExclusionRules}
+                  onChange={(event) => setSkuExclusionRules(event.target.value)}
+                  placeholder="530, EVENT"
+                />
+              </label>
+              <p className="status-line">
+                Excluding {excludedSalesSummary.count} SKU{excludedSalesSummary.count === 1 ? "" : "s"} · {decimalCurrency.format(excludedSalesSummary.gmv)} GMV · {Math.round(excludedSalesSummary.orders).toLocaleString()} orders
+              </p>
+            </article>
+
             <div className="kpi-grid">
               <MetricCard label="Today GMV" value={currency.format(metrics.gmv)} helper="From current report data" />
               <MetricCard label="GMV / Hour" value={currency.format(metrics.gmvPerHour)} helper={`${showInfo.livestreamHours} live hours`} />
@@ -3407,6 +3478,24 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 </button>
               </div>
             </div>
+
+            <article className="panel exclusion-panel">
+              <div>
+                <h3>SKU exclusion rules</h3>
+                <p>Same global filter as Today. Changes here update the full dashboard and Daily Report. Raw generated CSV exports stay unchanged.</p>
+              </div>
+              <label>
+                Prefixes
+                <input
+                  value={skuExclusionRules}
+                  onChange={(event) => setSkuExclusionRules(event.target.value)}
+                  placeholder="530, EVENT"
+                />
+              </label>
+              <p className="status-line">
+                Excluding {excludedSalesSummary.count} SKU{excludedSalesSummary.count === 1 ? "" : "s"} · {decimalCurrency.format(excludedSalesSummary.gmv)} GMV · {Math.round(excludedSalesSummary.orders).toLocaleString()} orders
+              </p>
+            </article>
 
             <div className="form-grid">
               <label>Date<input type="date" value={showInfo.date} onChange={(event) => updateReportDate(event.target.value)} /></label>
