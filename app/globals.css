@@ -1867,6 +1867,12 @@ td {
   justify-content: flex-end;
 }
 
+.record-save-actions {
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .record-summary-grid {
   display: grid;
   gap: 12px;
@@ -2894,6 +2900,10 @@ textarea:focus {
 
   .record-day-actions {
     justify-items: start;
+  }
+
+  .record-save-actions {
+    justify-content: flex-start;
   }
 
   .upload-actions {

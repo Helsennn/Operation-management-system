@@ -1133,6 +1133,13 @@ function splitListInput(value: string) {
     .filter(Boolean);
 }
 
+function splitActionInput(value: string) {
+  return value
+    .split(/[;；,\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function toggleName(list: string[], name: string) {
   const normalized = name.trim();
   if (!normalized) return list;
@@ -1611,6 +1618,7 @@ export default function Home() {
   const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
   const [recordCategoryFilter, setRecordCategoryFilter] = useState<OpsRecordCategory | "all">("all");
   const [recordDateFilter, setRecordDateFilter] = useState("all");
+  const [logTargetDate, setLogTargetDate] = useState(initialShow.date);
   const [dailyMetrics, setDailyMetrics] = useState<TrendPoint[]>([]);
   const [weeklyMetrics, setWeeklyMetrics] = useState<TrendPoint[]>([]);
   const [csvStatus, setCsvStatus] = useState("Sample data loaded. Upload a Whatnot CSV to replace it.");
@@ -2173,6 +2181,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
   function updateReportDate(date: string) {
     setCsvTrendDate(date);
+    setLogTargetDate(date);
     updateShow("date", date);
   }
 
@@ -2239,7 +2248,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     showToast(`${selectedDailyTrend.label} removed from trend history, including all sessions that day.`);
   }
 
-  function saveCurrentNotesToRecords() {
+  function saveCurrentNotesToRecords(targetDate = currentReportDate, toastLabel = "log") {
     const rawEntries: Array<[OpsRecordCategory, string]> = [
       ["actions", opsNotes.actions.join("; ")],
       ["traffic", opsNotes.traffic],
@@ -2257,7 +2266,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     }
 
     const createdAt = new Date().toISOString();
-    const recordDate = currentReportDate;
+    const recordDate = targetDate || currentReportDate;
     const newRecords = entries.map(([category, note], index) => ({
       id: `record-${Date.now()}-${index}`,
       date: recordDate,
@@ -2269,7 +2278,8 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     }));
 
     setOpsRecords((current) => [...newRecords, ...current]);
-    showToast(`${newRecords.length} records saved to history.`);
+    setRecordDateFilter(recordDate);
+    showToast(`${newRecords.length} records saved to ${toastLabel}.`);
   }
 
   function saveGeneratedReportSnapshot() {
@@ -2283,7 +2293,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     };
     setReportHistory((current) => [
       snapshot,
-      ...current.filter((report) => !(report.date === snapshot.date && report.showName === snapshot.showName)).slice(0, 29)
+      ...current.slice(0, 49)
     ]);
     setReportStatus("Saved to log");
     showToast("Daily report saved to cumulative log.");
@@ -3463,58 +3473,24 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
             <div className="section-title">
               <div>
                 <h3>Livestream records</h3>
-                <p>Current report notes feed today's summary. Saved records become a cumulative ops log for future AI review.</p>
+                <p>Write daily operation notes as editable tiles. Saved entries append to the cumulative log for future AI review.</p>
               </div>
-              <div className="button-row">
-                <button className="primary-button" type="button" onClick={saveCurrentNotesToRecords}>
-                  Save to history
+              <div className="button-row record-save-actions">
+                <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
+                  Save to log
+                </button>
+                <label className="inline-date-field">
+                  Other day
+                  <input type="date" value={logTargetDate} onChange={(event) => setLogTargetDate(event.target.value)} />
+                </label>
+                <button className="secondary-button" type="button" onClick={() => saveCurrentNotesToRecords(logTargetDate || currentReportDate, `${formatScheduleDate(logTargetDate || currentReportDate)} log`)}>
+                  Save to other day
                 </button>
               </div>
             </div>
 
-            <article className="panel strategy-panel">
-              <div className="panel-head">
-                <div>
-                  <h3>Ops decision board</h3>
-                  <p>Edit reusable tag blocks for pacing, traffic, promo, inventory, host notes, and market moves.</p>
-                </div>
-                <button className="secondary-button mini-button" type="button" onClick={addStrategyGroup}>Add block</button>
-              </div>
-              <div className="strategy-group-grid">
-                {strategyGroups.map((group) => (
-                  <section className="strategy-group" key={group.id}>
-                    <div className="strategy-group-head">
-                      <label>
-                        <span>Block</span>
-                        <input value={group.label} onChange={(event) => updateStrategyGroupLabel(group.id, event.target.value)} />
-                      </label>
-                      <button aria-label={`Delete ${group.label}`} className="icon-button strategy-delete-button" type="button" onClick={() => deleteStrategyGroup(group.id)}>
-                        <X aria-hidden="true" size={15} />
-                      </button>
-                    </div>
-                    <div className="strategy-item-list">
-                      {group.items.map((action, index) => (
-                        <div className="strategy-item-row" key={`${group.id}-${index}`}>
-                          <button
-                            aria-pressed={opsNotes.actions.includes(action)}
-                            className={opsNotes.actions.includes(action) ? "strategy-select selected" : "strategy-select"}
-                            onClick={() => toggleAction(action)}
-                            type="button"
-                          />
-                          <input value={action} onChange={(event) => updateStrategyItem(group.id, index, event.target.value)} />
-                          <button aria-label={`Delete ${action}`} className="icon-button strategy-item-delete" type="button" onClick={() => deleteStrategyItem(group.id, index)}>
-                            <X aria-hidden="true" size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <button className="text-button mini-button strategy-add-item" type="button" onClick={() => addStrategyItem(group.id)}>Add item</button>
-                  </section>
-                ))}
-              </div>
-            </article>
-
             <div className="notes-grid">
+              <NoteField label="Actions / show moves" value={opsNotes.actions.join("; ")} onChange={(value) => setOpsNotes((current) => ({ ...current, actions: splitActionInput(value) }))} />
               <NoteField label="Traffic & audience reaction" value={opsNotes.traffic} onChange={(value) => updateNotes("traffic", value)} />
               <NoteField label="Promotion / giveaway usage" value={opsNotes.giveaway} onChange={(value) => updateNotes("giveaway", value)} />
               <NoteField label="Host performance / pacing" value={opsNotes.host} onChange={(value) => updateNotes("host", value)} />
