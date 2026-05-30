@@ -123,11 +123,20 @@ type OpsNotes = {
 type OpsRecordCategory = "actions" | "traffic" | "giveaway" | "host" | "inventory" | "kpiContext" | "competitor";
 type OpsRecordSeverity = "low" | "medium" | "high";
 
+type RecordNoteTile = {
+  id: string;
+  label: string;
+  category: OpsRecordCategory;
+  syncKey?: keyof OpsNotes;
+  value: string;
+};
+
 type OpsRecord = {
   id: string;
   date: string;
   showName: string;
   category: OpsRecordCategory;
+  label?: string;
   severity: OpsRecordSeverity;
   note: string;
   createdAt: string;
@@ -357,6 +366,20 @@ const initialNotes: OpsNotes = {
     "GMV was supported by monitor and tool demand, while margin depended on holding back high-cost items during weaker bidding windows."
 };
 
+function createRecordTiles(notes: OpsNotes): RecordNoteTile[] {
+  return [
+    { id: "record-tile-actions", label: "Actions / show moves", category: "actions", syncKey: "actions", value: notes.actions.join("; ") },
+    { id: "record-tile-traffic", label: "Traffic & audience reaction", category: "traffic", syncKey: "traffic", value: notes.traffic },
+    { id: "record-tile-giveaway", label: "Promotion / giveaway usage", category: "giveaway", syncKey: "giveaway", value: notes.giveaway },
+    { id: "record-tile-host", label: "Host performance / pacing", category: "host", syncKey: "host", value: notes.host },
+    { id: "record-tile-inventory", label: "Inventory / clearance progress", category: "inventory", syncKey: "inventory", value: notes.inventory },
+    { id: "record-tile-context", label: "Decision context", category: "kpiContext", syncKey: "kpiContext", value: notes.kpiContext },
+    { id: "record-tile-competitor", label: "Competitor / market notes", category: "competitor", syncKey: "competitor", value: notes.competitor }
+  ];
+}
+
+const initialRecordTiles = createRecordTiles(initialNotes);
+
 const initialOpsRecords: OpsRecord[] = [
   {
     id: "record-sample-traffic",
@@ -536,6 +559,10 @@ const recordCategoryLabels: Record<OpsRecordCategory, string> = {
   kpiContext: "Decision Context",
   competitor: "Competitor"
 };
+
+function getOpsRecordDisplayLabel(record: OpsRecord) {
+  return record.label?.trim() || recordCategoryLabels[record.category];
+}
 
 const teamRoleOptions: Array<{ id: TeamRole; label: string }> = [
   { id: "host", label: "Host" },
@@ -1534,6 +1561,7 @@ type CloudStateKey =
   | "teamMembers"
   | "showInfo"
   | "opsNotes"
+  | "recordTiles"
   | "strategyGroups"
   | "opsRecords"
   | "reportHistory"
@@ -1613,6 +1641,7 @@ export default function Home() {
   const [newTeamMemberRole, setNewTeamMemberRole] = useState<TeamRole>("host");
   const [showInfo, setShowInfo] = useState<ShowInfo>(initialShow);
   const [opsNotes, setOpsNotes] = useState<OpsNotes>(initialNotes);
+  const [recordTiles, setRecordTiles] = useState<RecordNoteTile[]>(initialRecordTiles);
   const [strategyGroups, setStrategyGroups] = useState<StrategyGroup[]>(initialStrategyGroups);
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
   const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
@@ -1672,6 +1701,7 @@ export default function Home() {
     const localTeam = readLocalJson<TeamMember[]>("dailyOps.teamMembers.v1", initialTeamMembers);
     const localShowInfo = readLocalJson<ShowInfo>("dailyOps.showInfo.v1", initialShow);
     const localOpsNotes = readLocalJson<OpsNotes>("dailyOps.opsNotes.v1", initialNotes);
+    const localRecordTiles = readLocalJson<RecordNoteTile[]>("dailyOps.recordTiles.v1", createRecordTiles(localOpsNotes));
     const localStrategy = readLocalJson<StrategyGroup[]>("dailyOps.strategyGroups.v1", initialStrategyGroups);
     const localRecords = readLocalJson<OpsRecord[]>("dailyOps.opsRecords.v1", initialOpsRecords);
     const localReportHistory = readLocalJson<ReportSnapshot[]>("dailyOps.reportHistory.v1", []);
@@ -1683,6 +1713,7 @@ export default function Home() {
     if (Array.isArray(localTeam)) setTeamMembers(localTeam);
     setShowInfo(localShowInfo);
     setOpsNotes(localOpsNotes);
+    if (Array.isArray(localRecordTiles)) setRecordTiles(localRecordTiles);
     if (Array.isArray(localStrategy)) setStrategyGroups(localStrategy);
     if (Array.isArray(localRecords)) setOpsRecords(localRecords);
     if (Array.isArray(localReportHistory)) setReportHistory(localReportHistory);
@@ -1704,6 +1735,7 @@ export default function Home() {
           cloudTeam,
           cloudShowInfo,
           cloudOpsNotes,
+          cloudRecordTiles,
           cloudStrategy,
           cloudRecords,
           cloudReportHistory,
@@ -1713,6 +1745,7 @@ export default function Home() {
           loadCloudValue<TeamMember[]>("teamMembers"),
           loadCloudValue<ShowInfo>("showInfo"),
           loadCloudValue<OpsNotes>("opsNotes"),
+          loadCloudValue<RecordNoteTile[]>("recordTiles"),
           loadCloudValue<StrategyGroup[]>("strategyGroups"),
           loadCloudValue<OpsRecord[]>("opsRecords"),
           loadCloudValue<ReportSnapshot[]>("reportHistory"),
@@ -1725,6 +1758,11 @@ export default function Home() {
         if (Array.isArray(cloudTeam)) setTeamMembers(cloudTeam);
         if (cloudShowInfo) setShowInfo(cloudShowInfo);
         if (cloudOpsNotes) setOpsNotes(cloudOpsNotes);
+        if (Array.isArray(cloudRecordTiles)) {
+          setRecordTiles(cloudRecordTiles);
+        } else if (cloudOpsNotes) {
+          setRecordTiles(createRecordTiles(cloudOpsNotes));
+        }
         if (Array.isArray(cloudStrategy)) setStrategyGroups(cloudStrategy);
         if (Array.isArray(cloudRecords)) setOpsRecords(cloudRecords);
         if (Array.isArray(cloudReportHistory)) setReportHistory(cloudReportHistory);
@@ -1789,6 +1827,12 @@ export default function Home() {
     window.localStorage.setItem("dailyOps.opsNotes.v1", JSON.stringify(opsNotes));
     queueCloudSave("opsNotes", opsNotes);
   }, [opsNotes]);
+
+  useEffect(() => {
+    if (!localReady.current) return;
+    window.localStorage.setItem("dailyOps.recordTiles.v1", JSON.stringify(recordTiles));
+    queueCloudSave("recordTiles", recordTiles);
+  }, [recordTiles]);
 
   useEffect(() => {
     if (!localReady.current) return;
@@ -2114,14 +2158,13 @@ export default function Home() {
     const giveawayUsed = giveawayItems.length
       ? giveawayItems.map((item) => `${shortProductName(item.productName)} x${Math.round(item.orders)}`).join(", ")
       : "None detected in CSV";
-    const actionsTaken = opsNotes.actions.slice(0, 4).join("; ");
-    const noteContext = [
-      opsNotes.kpiContext ? `Decision context: ${compactReportText(opsNotes.kpiContext, "", 110)}` : "",
-      opsNotes.traffic ? `Traffic: ${compactReportText(opsNotes.traffic, "", 110)}` : "",
-      opsNotes.competitor ? `Competitor: ${compactReportText(opsNotes.competitor, "", 95)}` : "",
-      opsNotes.host ? `Host: ${compactReportText(opsNotes.host, "", 90)}` : "",
-      opsNotes.inventory ? `Inventory: ${compactReportText(opsNotes.inventory, "", 90)}` : ""
-    ].filter(Boolean);
+    const noteContext = recordTiles
+      .map((tile) => ({
+        label: tile.label.trim() || "Untitled block",
+        value: tile.value.trim()
+      }))
+      .filter((tile) => tile.value.length > 0)
+      .map((tile) => `${tile.label}: ${compactReportText(tile.value, "", 110)}`);
     const previousTrend = dailyMetrics
       .filter((point) => point.date && point.date < currentReportDate)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -2166,14 +2209,13 @@ Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 - Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}
 
 4. Ops Context
-- Tags: ${actionsTaken || "None selected"}
 ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No extra notes added"}
 
 5. Summary
 - ${cpiText}; ${marginText}.
 - ${trendText}
 - Next focus: ${nextFocus}`;
-  }, [categories, currentReportDate, dailyMetrics, metrics, opsNotes, salesItems, showInfo, skuGroups]);
+  }, [categories, currentReportDate, dailyMetrics, metrics, recordTiles, salesItems, showInfo, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
@@ -2187,6 +2229,47 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
   function updateNotes<K extends keyof OpsNotes>(key: K, value: OpsNotes[K]) {
     setOpsNotes((current) => ({ ...current, [key]: value }));
+  }
+
+  function syncTileToNotes(tile: RecordNoteTile, value: string) {
+    if (!tile.syncKey) return;
+    if (tile.syncKey === "actions") {
+      setOpsNotes((current) => ({ ...current, actions: splitActionInput(value) }));
+      return;
+    }
+    if (tile.syncKey === "traffic") setOpsNotes((current) => ({ ...current, traffic: value }));
+    if (tile.syncKey === "giveaway") setOpsNotes((current) => ({ ...current, giveaway: value }));
+    if (tile.syncKey === "host") setOpsNotes((current) => ({ ...current, host: value }));
+    if (tile.syncKey === "inventory") setOpsNotes((current) => ({ ...current, inventory: value }));
+    if (tile.syncKey === "kpiContext") setOpsNotes((current) => ({ ...current, kpiContext: value }));
+    if (tile.syncKey === "competitor") setOpsNotes((current) => ({ ...current, competitor: value }));
+  }
+
+  function updateRecordTileLabel(tileId: string, label: string) {
+    setRecordTiles((current) => current.map((tile) => (tile.id === tileId ? { ...tile, label } : tile)));
+  }
+
+  function updateRecordTileValue(tile: RecordNoteTile, value: string) {
+    setRecordTiles((current) => current.map((candidate) => (candidate.id === tile.id ? { ...candidate, value } : candidate)));
+    syncTileToNotes(tile, value);
+  }
+
+  function addRecordTile() {
+    setRecordTiles((current) => [
+      ...current,
+      {
+        id: `record-tile-${Date.now()}`,
+        label: "New block",
+        category: "kpiContext",
+        value: ""
+      }
+    ]);
+    showToast("Record tile added.");
+  }
+
+  function deleteRecordTile(tileId: string) {
+    setRecordTiles((current) => current.filter((tile) => tile.id !== tileId));
+    showToast("Record tile removed.");
   }
 
   function upsertDailyTrendPoint(point: TrendPoint) {
@@ -2249,16 +2332,13 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function saveCurrentNotesToRecords(targetDate = currentReportDate, toastLabel = "log") {
-    const rawEntries: Array<[OpsRecordCategory, string]> = [
-      ["actions", opsNotes.actions.join("; ")],
-      ["traffic", opsNotes.traffic],
-      ["giveaway", opsNotes.giveaway],
-      ["host", opsNotes.host],
-      ["inventory", opsNotes.inventory],
-      ["kpiContext", opsNotes.kpiContext],
-      ["competitor", opsNotes.competitor]
-    ];
-    const entries = rawEntries.filter(([, note]) => note.trim().length > 0);
+    const entries = recordTiles
+      .map((tile) => ({
+        category: tile.category,
+        label: tile.label.trim() || "Untitled block",
+        note: tile.value.trim()
+      }))
+      .filter((entry) => entry.note.length > 0);
 
     if (!entries.length) {
       showToast("No notes to save yet.");
@@ -2267,13 +2347,14 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
     const createdAt = new Date().toISOString();
     const recordDate = targetDate || currentReportDate;
-    const newRecords = entries.map(([category, note], index) => ({
+    const newRecords = entries.map((entry, index) => ({
       id: `record-${Date.now()}-${index}`,
       date: recordDate,
       showName: showInfo.showName,
-      category,
+      category: entry.category,
+      label: entry.label,
       severity: "medium" as OpsRecordSeverity,
-      note,
+      note: entry.note,
       createdAt
     }));
 
@@ -2295,8 +2376,10 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
       snapshot,
       ...current.slice(0, 49)
     ]);
+    setRecordCategoryFilter("all");
+    setRecordDateFilter(reportDate);
     setReportStatus("Saved to log");
-    showToast("Daily report saved to cumulative log.");
+    showToast(`Daily report saved to ${formatScheduleDate(reportDate)} log.`);
   }
 
   function deleteOpsRecord(id: string) {
@@ -2324,17 +2407,23 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function applyRecordToReport(record: OpsRecord) {
+    const label = getOpsRecordDisplayLabel(record);
     if (record.category === "actions") {
-      const actions = record.note
-        .split(";")
-        .map((action) => action.trim())
-        .filter(Boolean);
+      const actions = splitActionInput(record.note);
       setOpsNotes((current) => ({ ...current, actions }));
+      setRecordTiles((current) => current.map((tile) => tile.category === "actions" ? { ...tile, label, value: record.note } : tile));
       showToast("Action record applied to current report.");
       return;
     }
 
     updateNotes(record.category, record.note);
+    setRecordTiles((current) => {
+      const existing = current.find((tile) => tile.label.toLowerCase() === label.toLowerCase());
+      if (existing) {
+        return current.map((tile) => tile.id === existing.id ? { ...tile, category: record.category, label, value: record.note } : tile);
+      }
+      return [...current, { id: `record-tile-${Date.now()}`, label, category: record.category, value: record.note }];
+    });
     showToast("Record applied to current report.");
   }
 
@@ -2345,7 +2434,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
           ...current,
           actions: Array.from(new Set([
             ...current.actions,
-            ...record.note.split(";").map((action) => action.trim()).filter(Boolean)
+            ...splitActionInput(record.note)
           ]))
         };
       }
@@ -2358,6 +2447,13 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     }, { actions: [], traffic: "", giveaway: "", host: "", inventory: "", kpiContext: "", competitor: "" });
 
     setOpsNotes(nextNotes);
+    setRecordTiles(records.map((record, index) => ({
+      id: `record-tile-applied-${record.id}-${index}`,
+      label: getOpsRecordDisplayLabel(record),
+      category: record.category,
+      syncKey: record.category,
+      value: record.note
+    })));
     showToast("Daily record group applied to current report.");
   }
 
@@ -3476,6 +3572,9 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <p>Write daily operation notes as editable tiles. Saved entries append to the cumulative log for future AI review.</p>
               </div>
               <div className="button-row record-save-actions">
+                <button className="secondary-button" type="button" onClick={addRecordTile}>
+                  Add tile
+                </button>
                 <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
                   Save to log
                 </button>
@@ -3490,13 +3589,15 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
             </div>
 
             <div className="notes-grid">
-              <NoteField label="Actions / show moves" value={opsNotes.actions.join("; ")} onChange={(value) => setOpsNotes((current) => ({ ...current, actions: splitActionInput(value) }))} />
-              <NoteField label="Traffic & audience reaction" value={opsNotes.traffic} onChange={(value) => updateNotes("traffic", value)} />
-              <NoteField label="Promotion / giveaway usage" value={opsNotes.giveaway} onChange={(value) => updateNotes("giveaway", value)} />
-              <NoteField label="Host performance / pacing" value={opsNotes.host} onChange={(value) => updateNotes("host", value)} />
-              <NoteField label="Inventory / clearance progress" value={opsNotes.inventory} onChange={(value) => updateNotes("inventory", value)} />
-              <NoteField label="Decision context" value={opsNotes.kpiContext} onChange={(value) => updateNotes("kpiContext", value)} />
-              <NoteField label="Competitor / market notes" value={opsNotes.competitor} onChange={(value) => updateNotes("competitor", value)} />
+              {recordTiles.map((tile) => (
+                <RecordTileEditor
+                  key={tile.id}
+                  tile={tile}
+                  onDelete={() => deleteRecordTile(tile.id)}
+                  onLabelChange={(value) => updateRecordTileLabel(tile.id, value)}
+                  onValueChange={(value) => updateRecordTileValue(tile, value)}
+                />
+              ))}
             </div>
 
             <article className="panel host-performance-panel">
@@ -3584,7 +3685,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                   const topNotes = group.records
                     .filter((record) => record.category !== "actions")
                     .slice(0, 3)
-                    .map((record) => `${recordCategoryLabels[record.category]}: ${compactReportText(record.note, "", 120)}`);
+                    .map((record) => `${getOpsRecordDisplayLabel(record)}: ${compactReportText(record.note, "", 120)}`);
                   const strategyRecord = group.records.find((record) => record.category === "actions");
                   return (
                   <article className="record-day-card" key={group.date}>
@@ -3605,7 +3706,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                         <details className="record-details">
                           <summary>View notes</summary>
                           {group.records.map((record) => (
-                            <p key={`note-${record.id}`}><strong>{recordCategoryLabels[record.category]}:</strong> {record.note}</p>
+                            <p key={`note-${record.id}`}><strong>{getOpsRecordDisplayLabel(record)}:</strong> {record.note}</p>
                           ))}
                         </details>
                       ) : null}
@@ -4133,19 +4234,29 @@ function SkuTable({ title, rows }: { title: string; rows: SalesItem[] }) {
   );
 }
 
-function NoteField({
-  label,
-  value,
-  onChange
+function RecordTileEditor({
+  tile,
+  onDelete,
+  onLabelChange,
+  onValueChange
 }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
+  tile: RecordNoteTile;
+  onDelete: () => void;
+  onLabelChange: (value: string) => void;
+  onValueChange: (value: string) => void;
 }) {
   return (
-    <label className="note-field">
-      <span>{label}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={5} />
-    </label>
+    <article className="note-field record-note-tile">
+      <div className="record-note-head">
+        <label>
+          <span>Block name</span>
+          <input value={tile.label} onChange={(event) => onLabelChange(event.target.value)} />
+        </label>
+        <button aria-label={`Delete ${tile.label || "record tile"}`} className="icon-button record-note-delete" onClick={onDelete} type="button">
+          <X aria-hidden="true" size={14} />
+        </button>
+      </div>
+      <textarea value={tile.value} onChange={(event) => onValueChange(event.target.value)} rows={5} placeholder={`${tile.label || "Block"} notes`} />
+    </article>
   );
 }
