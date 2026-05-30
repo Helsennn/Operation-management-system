@@ -616,15 +616,13 @@ function findColumn(headers: string[], candidates: string[]) {
 }
 
 function inferCategory(productName: string) {
-  const name = productName.toLowerCase();
-  if (isGiveawayProduct(productName)) return "Giveaway";
-  if (name.includes("monitor")) return "Monitor";
-  if (name.includes("apple") || name.includes("airpod") || name.includes("iphone")) return "Apple / Branded";
-  if (name.includes("power") || name.includes("charger") || name.includes("cable")) return "Electronics";
-  if (name.includes("kitchen") || name.includes("rack") || name.includes("storage")) return "Kitchen";
-  if (name.includes("tool") || name.includes("glue") || name.includes("drill")) return "Tools";
-  if (name.includes("beauty") || name.includes("hair")) return "Beauty";
-  return "Home";
+  const prefixMatch = productName.match(/^\s*([^:：]{1,40})\s*[:：]/);
+  const prefix = prefixMatch?.[1]
+    ?.replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+  return prefix || "Other";
 }
 
 function isGiveawayProduct(productName: string) {
