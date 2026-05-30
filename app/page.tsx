@@ -1005,16 +1005,22 @@ function compactReportText(value: string | undefined, fallback: string, maxLengt
 }
 
 function shortProductName(value: string) {
-  const cleaned = value
-    .replace(/^HOU:\s*/i, "")
-    .replace(/\[[^\]]+\]/g, "")
+  const withoutPrefix = value.replace(/^\s*[^:：]{1,40}\s*[:：]\s*/, "");
+  const bracketNames = Array.from(withoutPrefix.matchAll(/\[([^\]]{2,90})\]/g))
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+  const source = bracketNames.find((name) => /[a-z0-9]/i.test(name)) || withoutPrefix;
+  const cleaned = source
+    .replace(/\[[^\]]+\]/g, " ")
     .replace(/#\d+\b/g, "")
-    .replace(/\b(with|for|and|the|set|pack|pcs|piece|pieces|new|brand)\b/gi, " ")
+    .replace(/\b(no[-\s]?press|quick[-\s]?dry|opaque|multi[-\s]?use|portable|heavy[-\s]?duty)\b/gi, " ")
+    .replace(/\b(with|for|and|the|set|pack|pcs|piece|pieces|new|brand|assorted)\b/gi, " ")
+    .replace(/[-–—_,]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
   const words = cleaned.split(" ").filter(Boolean);
-  if (words.length <= 4) return cleaned || value;
-  return words.slice(0, 4).join(" ");
+  if (words.length <= 5) return cleaned || value;
+  return words.slice(0, 5).join(" ");
 }
 
 function formatCompactItems(items: SalesItem[], fallback: string, limit = 3) {
@@ -2209,6 +2215,7 @@ export default function Home() {
     const giveawayUsed = giveawayItems.length
       ? giveawayItems.map((item) => `${shortProductName(item.productName)} x${Math.round(item.orders)}`).join(", ")
       : "None detected in CSV";
+    const giveawayCostLine = metrics.giveawayCost > 0 ? `\n- Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}` : "";
     const noteContext = recordTiles
       .map((tile) => ({
         label: tile.label.trim() || "Untitled block",
@@ -2254,11 +2261,10 @@ Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 - Winners: ${winningItems}
 - Top GMV: ${highGmvItems}
 - Drag: ${weakItems}
-${excludedSalesSummary.count ? `- Excluded from product mix: ${excludedSalesSummary.count} SKUs · ${decimalCurrency.format(excludedSalesSummary.gmv)} GMV · rules ${parseSkuExclusionRules(skuExclusionRules).join(", ")}` : ""}
+${excludedSalesSummary.count ? `- Excluded from product mix: ${excludedSalesSummary.count} SKUs · ${decimalCurrency.format(excludedSalesSummary.gmv)} GMV` : ""}
 
 3. Promotion / Giveaway
-- CSV giveaways: ${giveawayUsed}
-- Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}
+- CSV giveaways: ${giveawayUsed}${giveawayCostLine}
 
 4. Ops Context
 ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No extra notes added"}
