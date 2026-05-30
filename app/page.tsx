@@ -258,13 +258,23 @@ const initialStrategyGroups: StrategyGroup[] = [
   },
   {
     id: "strategy-product",
-    label: "Product",
+    label: "Product / SKU",
     items: ["Pushed low-CPI SKUs", "Held back high-cost SKUs", "Changed product order", "Focused on branded products"]
   },
   {
     id: "strategy-promotion",
     label: "Promotion",
     items: ["Saved giveaways", "Used audience engagement push", "Held premium gift cards"]
+  },
+  {
+    id: "strategy-traffic",
+    label: "Traffic / Audience",
+    items: ["Low bidding depth", "Strong chat response", "Traffic dropped late", "Audience asked for lower-cost items"]
+  },
+  {
+    id: "strategy-inventory",
+    label: "Inventory",
+    items: ["Clearance focus", "Fresh SKUs limited", "Product fatigue noticed", "Warehouse cleanup affected upload pace"]
   },
   {
     id: "strategy-market",
@@ -512,7 +522,7 @@ const recordCategoryOptions: Array<{ id: OpsRecordCategory | "all"; label: strin
   { id: "giveaway", label: "Promotion" },
   { id: "host", label: "Host / Pacing" },
   { id: "inventory", label: "Inventory" },
-  { id: "kpiContext", label: "Game / Strategy" },
+  { id: "kpiContext", label: "Decision Context" },
   { id: "competitor", label: "Competitor" },
   { id: "actions", label: "Actions" }
 ];
@@ -523,7 +533,7 @@ const recordCategoryLabels: Record<OpsRecordCategory, string> = {
   giveaway: "Promotion",
   host: "Host / Pacing",
   inventory: "Inventory",
-  kpiContext: "Game / Strategy",
+  kpiContext: "Decision Context",
   competitor: "Competitor"
 };
 
@@ -1880,6 +1890,9 @@ export default function Home() {
       return days;
     }, []);
   }, [scheduledShows]);
+  const upcomingShows = useMemo(() => {
+    return [...scheduledShows].sort((a, b) => getScheduleSortKey(a).localeCompare(getScheduleSortKey(b))).slice(0, 4);
+  }, [scheduledShows]);
   const activeHostMembers = teamMembers.filter((member) => member.active && (member.role === "host" || member.role === "both"));
   const activeOperatorMembers = teamMembers.filter((member) => member.active && (member.role === "operator" || member.role === "both"));
   const hostSessionRows = [...scheduledShows]
@@ -2095,7 +2108,7 @@ export default function Home() {
       : "None detected in CSV";
     const actionsTaken = opsNotes.actions.slice(0, 4).join("; ");
     const noteContext = [
-      opsNotes.kpiContext ? `Strategy: ${compactReportText(opsNotes.kpiContext, "", 110)}` : "",
+      opsNotes.kpiContext ? `Decision context: ${compactReportText(opsNotes.kpiContext, "", 110)}` : "",
       opsNotes.traffic ? `Traffic: ${compactReportText(opsNotes.traffic, "", 110)}` : "",
       opsNotes.competitor ? `Competitor: ${compactReportText(opsNotes.competitor, "", 95)}` : "",
       opsNotes.host ? `Host: ${compactReportText(opsNotes.host, "", 90)}` : "",
@@ -2144,7 +2157,7 @@ Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 - CSV giveaways: ${giveawayUsed}
 - Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}
 
-4. Game / Strategy
+4. Ops Context
 - Tags: ${actionsTaken || "None selected"}
 ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No extra notes added"}
 
@@ -3005,21 +3018,31 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <div className="panel-head">
                   <div>
                     <h3>Upcoming shows</h3>
-                    <p>Multiple livestreams can run on the same day.</p>
+                    <p>Edit or remove near-term schedule blocks without opening Schedule.</p>
                   </div>
-                  <button className="text-button" type="button" onClick={() => navigateTo("schedule")}>Open</button>
+                  <div className="button-row">
+                    <button className="secondary-button mini-button" type="button" onClick={addDraftShow}>Add show</button>
+                    <button className="text-button mini-button" type="button" onClick={() => navigateTo("schedule")}>Open all</button>
+                  </div>
                 </div>
                 <div className="shift-list">
-                  {scheduledShows.slice(0, 4).map((show) => (
-                    <button className="shift-row" key={show.id} onClick={() => openShowLayer(show)} type="button">
-                      <div>
-                        <strong>{show.date}</strong>
-                        <span>{show.startTime} - {show.endTime}</span>
+                  {upcomingShows.map((show) => (
+                    <article className="shift-row upcoming-show-card" key={show.id}>
+                      <button className="upcoming-show-main" onClick={() => openShowLayer(show)} type="button">
+                        <div>
+                          <strong>{formatScheduleDate(show.date)}</strong>
+                          <span>{show.startTime} - {show.endTime}</span>
+                        </div>
+                        <p>{show.title} · {show.hosts.join(", ") || "No host"}</p>
+                        <ChevronRight aria-hidden="true" size={18} />
+                      </button>
+                      <div className="upcoming-show-actions">
+                        <button className="secondary-button mini-button" type="button" onClick={() => openShowLayer(show)}>Edit</button>
+                        <button className="text-button danger-text mini-button" type="button" onClick={() => deleteScheduledShow(show.id)}>Delete</button>
                       </div>
-                      <p>{show.title} · {show.hosts.join(", ")}</p>
-                      <ChevronRight aria-hidden="true" size={18} />
-                    </button>
+                    </article>
                   ))}
+                  {!upcomingShows.length ? <div className="empty-chart">No upcoming shows yet. Add one here or open Schedule.</div> : null}
                 </div>
               </article>
 
@@ -3452,8 +3475,8 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
             <article className="panel strategy-panel">
               <div className="panel-head">
                 <div>
-                  <h3>Strategy</h3>
-                  <p>Edit the blocks and items, then select only the strategy tags that mattered today.</p>
+                  <h3>Ops decision board</h3>
+                  <p>Edit reusable tag blocks for pacing, traffic, promo, inventory, host notes, and market moves.</p>
                 </div>
                 <button className="secondary-button mini-button" type="button" onClick={addStrategyGroup}>Add block</button>
               </div>
@@ -3496,7 +3519,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
               <NoteField label="Promotion / giveaway usage" value={opsNotes.giveaway} onChange={(value) => updateNotes("giveaway", value)} />
               <NoteField label="Host performance / pacing" value={opsNotes.host} onChange={(value) => updateNotes("host", value)} />
               <NoteField label="Inventory / clearance progress" value={opsNotes.inventory} onChange={(value) => updateNotes("inventory", value)} />
-              <NoteField label="Game / strategy" value={opsNotes.kpiContext} onChange={(value) => updateNotes("kpiContext", value)} />
+              <NoteField label="Decision context" value={opsNotes.kpiContext} onChange={(value) => updateNotes("kpiContext", value)} />
               <NoteField label="Competitor / market notes" value={opsNotes.competitor} onChange={(value) => updateNotes("competitor", value)} />
             </div>
 
