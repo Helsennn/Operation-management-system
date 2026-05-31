@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 type Segment = "today" | "schedule" | "report" | "records" | "analytics";
+type RecordsView = "write" | "history";
 type TrendMetric = "gmv" | "gmv_per_hour" | "aov";
 type CpiView = "all" | "winners" | "optimize" | "risk";
 type MagnetMetric =
@@ -1697,7 +1698,7 @@ export default function Home() {
   const [selectedSkuId, setSelectedSkuId] = useState(sampleItems[0].id);
   const [scheduleStatus, setScheduleStatus] = useState("Schedule ready. Add Show creates a draft block for the day.");
   const [reportStatus, setReportStatus] = useState("Draft");
-  const [segmentHistory, setSegmentHistory] = useState<Segment[]>([]);
+  const [recordsView, setRecordsView] = useState<RecordsView>("write");
   const [activeLayer, setActiveLayer] = useState<ActiveLayer>(null);
   const [toast, setToast] = useState("");
   const [cloudStatus, setCloudStatus] = useState(cloudSyncEnabled ? "Cloud sync connecting..." : "Cloud sync is not configured.");
@@ -2421,6 +2422,10 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
     showToast(`${newRecords.length} records saved to ${toastLabel}.`);
   }
 
+  const isRecordsHistoryView = segment === "records" && recordsView === "history";
+  const canNavigateBack = Boolean(activeLayer) || isRecordsHistoryView;
+  const topbarEyebrow = isRecordsHistoryView ? "Records / History log" : "Whatnot Daily Ops";
+
   function saveGeneratedReportSnapshot() {
     const reportDate = currentReportDate;
     const snapshot: ReportSnapshot = {
@@ -2512,6 +2517,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
       syncKey: record.category,
       value: record.note
     })));
+    setRecordsView("write");
     showToast("Daily record group applied to current report.");
   }
 
@@ -2535,9 +2541,12 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
   }
 
   function navigateTo(nextSegment: Segment) {
-    if (nextSegment === segment) return;
+    if (nextSegment === segment) {
+      if (nextSegment === "records") setRecordsView("write");
+      return;
+    }
     setActiveLayer(null);
-    setSegmentHistory((current) => [...current, segment]);
+    if (nextSegment === "records") setRecordsView("write");
     setSegment(nextSegment);
   }
 
@@ -2546,12 +2555,9 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
       setActiveLayer(null);
       return;
     }
-    setSegmentHistory((current) => {
-      const previous = current.at(-1);
-      if (!previous) return current;
-      setSegment(previous);
-      return current.slice(0, -1);
-    });
+    if (segment === "records" && recordsView !== "write") {
+      setRecordsView("write");
+    }
   }
 
   function openShowLayer(show: ScheduledShow) {
@@ -3081,16 +3087,16 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
         <header className="topbar">
           <div className="topbar-title">
             <button
-              aria-label={activeLayer ? "Close detail layer" : "Go back"}
-              className={segmentHistory.length || activeLayer ? "back-button visible" : "back-button"}
-              disabled={!segmentHistory.length && !activeLayer}
+              aria-label={activeLayer ? "Close detail layer" : "Back to Records writing"}
+              className={canNavigateBack ? "back-button visible" : "back-button"}
+              disabled={!canNavigateBack}
               onClick={goBack}
               type="button"
             >
               <ArrowLeft aria-hidden="true" size={19} />
             </button>
             <div>
-              <p className="eyebrow">Whatnot Daily Ops</p>
+              <p className="eyebrow">{topbarEyebrow}</p>
               <h2>{navItems.find((item) => item.id === segment)?.label}</h2>
             </div>
           </div>
@@ -3661,22 +3667,34 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
         {segment === "records" ? (
           <section className="screen-stack">
-            <div className="section-title">
-              <div>
+            {recordsView === "write" ? (
+              <>
+            <div className="section-title record-command-panel">
+              <div className="record-command-copy">
                 <h3>Livestream records</h3>
                 <p>Write daily operation notes as editable tiles. Saved entries append to the cumulative log for future AI review.</p>
               </div>
-              <div className="button-row record-save-actions">
-                <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
-                  Save to log
-                </button>
-                <label className="inline-date-field">
-                  Other day
-                  <input type="date" value={logTargetDate} onChange={(event) => setLogTargetDate(event.target.value)} />
-                </label>
-                <button className="secondary-button" type="button" onClick={() => saveCurrentNotesToRecords(logTargetDate || currentReportDate, `${formatScheduleDate(logTargetDate || currentReportDate)} log`)}>
-                  Save to other day
-                </button>
+              <div className="record-save-panel">
+                <div>
+                  <span className="record-save-kicker">Default save</span>
+                  <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
+                    <CheckCircle2 aria-hidden="true" size={16} />
+                    Save to log
+                  </button>
+                </div>
+                <div>
+                  <span className="record-save-kicker">Save to another date</span>
+                  <div className="record-date-save">
+                    <label className="inline-date-field">
+                      Other day
+                      <input type="date" value={logTargetDate} onChange={(event) => setLogTargetDate(event.target.value)} />
+                    </label>
+                    <button className="secondary-button" type="button" onClick={() => saveCurrentNotesToRecords(logTargetDate || currentReportDate, `${formatScheduleDate(logTargetDate || currentReportDate)} log`)}>
+                      <CalendarCheck2 aria-hidden="true" size={16} />
+                      Save
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3687,6 +3705,7 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                   <p>Each block title becomes a section label in the Daily Report.</p>
                 </div>
                 <button className="secondary-button" type="button" onClick={addRecordTile}>
+                  <CalendarPlus aria-hidden="true" size={16} />
                   Add block
                 </button>
               </div>
@@ -3702,6 +3721,31 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 ))}
               </div>
             </section>
+
+            <article className="panel record-history-entry">
+              <div>
+                <span>Second layer</span>
+                <h3>Review saved history and host performance</h3>
+                <p>Open the cumulative log when you need older notes, saved reports, or host GMV/order records. Daily writing stays clean on this first layer.</p>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => setRecordsView("history")}>
+                View history log
+                <ChevronRight aria-hidden="true" size={17} />
+              </button>
+            </article>
+              </>
+            ) : (
+              <>
+            <div className="section-title records-history-title">
+              <div>
+                <h3>History log</h3>
+                <p>Saved notes, generated reports, and host session performance live here. Use the back arrow or button to return to daily writing.</p>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => setRecordsView("write")}>
+                <ArrowLeft aria-hidden="true" size={16} />
+                Back to writing
+              </button>
+            </div>
 
             <article className="panel host-performance-panel">
               <div className="panel-head">
@@ -3836,6 +3880,8 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 )}
               </div>
             </article>
+              </>
+            )}
           </section>
         ) : null}
 

@@ -865,11 +865,16 @@ dt,
 }
 
 .schedule-grid,
-.schedule-days,
-.notes-grid {
+.schedule-days {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.notes-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
 }
 
 .schedule-days {
@@ -1847,12 +1852,20 @@ td {
 }
 
 .note-field {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 251, 255, 0.82));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.86)),
+    linear-gradient(135deg, rgba(0, 122, 255, 0.06), rgba(52, 199, 89, 0.04));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 14px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.note-field:hover {
+  border-color: rgba(0, 122, 255, 0.18);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
 }
 
 .note-field:focus-within {
@@ -1862,19 +1875,22 @@ td {
 
 .record-note-tile {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  min-height: 206px;
 }
 
 .record-note-head {
-  align-items: end;
-  display: grid;
+  align-items: start;
+  display: flex;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  justify-content: space-between;
 }
 
 .record-note-head label {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  width: 100%;
 }
 
 .record-note-head span {
@@ -1885,16 +1901,24 @@ td {
 }
 
 .record-note-head input {
+  background: rgba(255, 255, 255, 0.86);
   min-height: 38px;
-  padding: 7px 9px;
+  padding: 8px 10px;
 }
 
 .record-note-delete {
-  background: #fff1f0;
+  background: rgba(255, 241, 240, 0.9);
   color: var(--red);
-  height: 36px;
-  min-width: 36px;
-  width: 36px;
+  flex: 0 0 38px;
+  height: 38px;
+  min-width: 38px;
+  width: 38px;
+}
+
+.record-note-tile textarea {
+  background: rgba(255, 255, 255, 0.76);
+  min-height: 136px;
+  resize: vertical;
 }
 
 .compact-select {
@@ -1927,19 +1951,59 @@ td {
   justify-content: flex-end;
 }
 
-.record-save-actions {
+.record-command-panel {
   align-items: end;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(232, 242, 255, 0.74)),
+    linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(52, 199, 89, 0.05));
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.record-command-copy {
+  max-width: 560px;
+}
+
+.record-save-panel {
+  align-items: stretch;
+  display: flex;
   flex-wrap: wrap;
+  gap: 12px;
   justify-content: flex-end;
 }
 
-.record-block-section {
+.record-save-panel > div {
+  align-content: start;
   display: grid;
-  gap: 12px;
+  gap: 6px;
+}
+
+.record-save-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.record-date-save {
+  align-items: end;
+  display: flex;
+  gap: 8px;
+}
+
+.record-block-section {
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 18px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
 }
 
 .record-block-head {
-  align-items: end;
+  align-items: center;
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -1957,6 +2021,53 @@ td {
   font-size: 13px;
   line-height: 1.4;
   margin: 4px 0 0;
+}
+
+.record-history-entry {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(238, 242, 247, 0.78)),
+    linear-gradient(135deg, rgba(155, 92, 255, 0.08), rgba(0, 166, 184, 0.06));
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+
+.record-history-entry span {
+  color: var(--primary);
+  display: block;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.record-history-entry h3,
+.records-history-title h3 {
+  font-size: 20px;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.record-history-entry p,
+.records-history-title p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.records-history-title {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(242, 237, 255, 0.66)),
+    linear-gradient(135deg, rgba(0, 122, 255, 0.06), rgba(255, 149, 0, 0.04));
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
 }
 
 .record-summary-grid {
@@ -2807,7 +2918,6 @@ textarea:focus {
 
   .schedule-grid,
   .schedule-days,
-  .notes-grid,
   .strategy-group-grid,
   .host-performance-grid,
   .record-summary-grid {
@@ -2989,8 +3099,23 @@ textarea:focus {
     justify-items: start;
   }
 
-  .record-save-actions {
-    justify-content: flex-start;
+  .record-command-panel {
+    align-items: stretch;
+  }
+
+  .record-save-panel {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .record-date-save {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .record-date-save .secondary-button,
+  .record-save-panel .primary-button {
+    width: 100%;
   }
 
   .record-block-head {
@@ -3001,6 +3126,19 @@ textarea:focus {
 
   .record-block-head .secondary-button {
     justify-self: start;
+  }
+
+  .record-history-entry,
+  .records-history-title {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .record-history-entry .secondary-button,
+  .records-history-title .secondary-button {
+    justify-self: start;
+    width: 100%;
   }
 
   .upload-actions {
