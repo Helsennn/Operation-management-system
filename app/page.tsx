@@ -237,6 +237,20 @@ type ExternalDashboardData = {
   latest_daily?: ExternalDailyPoint[];
 };
 
+type ReportMetrics = {
+  gmv: number;
+  gmvPerHour: number;
+  orders: number;
+  aov: number;
+  totalCost: number;
+  cpi: number;
+  giveawayCost: number;
+  profitMargin: number;
+  targetPriceCompletion: number;
+  aov80Line: number;
+  aov100Line: number;
+};
+
 const navItems: Array<{ id: Segment; label: string; description: string; Icon: LucideIcon }> = [
   { id: "today", label: "Today", description: "Today snapshot", Icon: HomeIcon },
   { id: "schedule", label: "Schedule", description: "Multi-show day plan", Icon: CalendarDays },
@@ -1032,6 +1046,135 @@ function formatCompactItems(items: SalesItem[], fallback: string, limit = 3) {
 function formatReportItems(items: string[], fallback: string, limit = 3) {
   const selected = items.filter(Boolean).slice(0, limit);
   return selected.length ? selected.join("; ") : fallback;
+}
+
+function cleanReportSentence(value: string) {
+  return value
+    .replace(/\*\*/g, "")
+    .replace(/\s*;\s*/g, "; ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitReportSentences(value: string) {
+  const normalized = cleanReportSentence(value);
+  if (!normalized) return [];
+
+  return normalized
+    .split(/(?<=[.!?])\s+|\n+|;\s+/)
+    .map((part) => part.replace(/^[-•\d.)\s]+/, "").trim())
+    .filter((part) => part.length > 10);
+}
+
+function scoreReportSentence(sentence: string) {
+  const lower = sentence.toLowerCase();
+  const keywords = [
+    "traffic",
+    "giveaway",
+    "gift card",
+    "gc",
+    "competitor",
+    "big account",
+    "host",
+    "pace",
+    "prebid",
+    "strategy",
+    "clearance",
+    "fatigue",
+    "inventory",
+    "conversion",
+    "bidding",
+    "margin",
+    "cost"
+  ];
+  const keywordScore = keywords.reduce((score, keyword) => score + (lower.includes(keyword) ? 3 : 0), 0);
+  const lengthScore = sentence.length > 45 && sentence.length < 180 ? 2 : 0;
+  return keywordScore + lengthScore;
+}
+
+function summarizeRecordTiles(tiles: RecordNoteTile[], limit = 4) {
+  const candidates = tiles
+    .map((tile) => {
+      const label = tile.label.trim() || "Ops note";
+      const bestSentence = splitReportSentences(tile.value)
+        .sort((a, b) => scoreReportSentence(b) - scoreReportSentence(a))[0];
+      return bestSentence
+        ? {
+            label,
+            text: compactReportText(cleanReportSentence(bestSentence), "", 135),
+            score: scoreReportSentence(bestSentence)
+          }
+        : null;
+    })
+    .filter((item): item is { label: string; text: string; score: number } => Boolean(item && item.text));
+
+  return candidates
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+function describeProductMix(categories: string[], topItems: SalesItem[], winners: SalesItem[], dragItems: SalesItem[]) {
+  const mix = categories.slice(0, 3).join(", ") || "No category detected";
+  const top = formatCompactItems(topItems, "No clear top item", 3);
+  const winnerText = formatCompactItems(winners, "no 100%+ CPI item", 3);
+  const dragText = formatCompactItems(dragItems, "no major drag item", 2);
+
+  if (winners.length && dragItems.length) {
+    return `Product mix centered on ${mix}. Demand was led by ${top}, while pricing strength came from ${winnerText}; margin pressure mainly came from ${dragText}.`;
+  }
+  if (winners.length) {
+    return `Product mix centered on ${mix}. ${top} drove the strongest sales signal, and ${winnerText} held pricing above cost.`;
+  }
+  if (dragItems.length) {
+    return `Product mix centered on ${mix}. ${top} carried volume, but ${dragText} created the main pricing drag.`;
+  }
+  return `Product mix centered on ${mix}, with ${top} showing the clearest buyer interest.`;
+}
+
+function describeKpiStory(metrics: ReportMetrics, previousTrend: TrendPoint[]) {
+  const pricing =
+    metrics.targetPriceCompletion >= 1.2
+      ? "pricing was excellent and well above the cost line"
+      : metrics.targetPriceCompletion >= 1
+        ? "pricing cleared the cost line"
+        : metrics.targetPriceCompletion >= 0.8
+          ? "pricing stayed in the workable 80-100% band"
+          : metrics.targetPriceCompletion >= 0.6
+            ? "pricing needs attention and sat below the 80% line"
+            : "pricing was under heavy pressure";
+  const margin =
+    metrics.profitMargin >= 0.1
+      ? "margin remained healthy"
+      : metrics.profitMargin >= 0
+        ? "margin was thin but positive"
+        : metrics.profitMargin >= -0.2
+          ? "margin was below line"
+          : "margin had high loss exposure";
+
+  if (!previousTrend.length) return `${pricing}; ${margin}. No recent trend baseline is available yet.`;
+
+  const previousAvgGmv = previousTrend.reduce((sum, point) => sum + point.gmv, 0) / previousTrend.length;
+  const previousAvgAov = previousTrend.reduce((sum, point) => sum + (point.aov ?? 0), 0) / previousTrend.length;
+  const gmvDirection = metrics.gmv >= previousAvgGmv ? "above" : "below";
+  const aovDirection = metrics.aov >= previousAvgAov ? "stronger" : "softer";
+  return `${pricing}; ${margin}. GMV was ${gmvDirection} the recent ${previousTrend.length}-day average (${decimalCurrency.format(previousAvgGmv)}), with AOV ${aovDirection} than recent baseline.`;
+}
+
+function buildReportCloseout(metrics: ReportMetrics, recordInsights: Array<{ label: string; text: string }>, winners: SalesItem[], dragItems: SalesItem[]) {
+  const hasTrafficNote = recordInsights.some((item) => /traffic|audience|competitor|big account/i.test(`${item.label} ${item.text}`));
+  const hasStrategyNote = recordInsights.some((item) => /strategy|prebid|pace|hook|conversion/i.test(`${item.label} ${item.text}`));
+  const hasInventoryNote = recordInsights.some((item) => /inventory|clearance|fatigue|not to buy|good to sale/i.test(`${item.label} ${item.text}`));
+
+  if (metrics.targetPriceCompletion < 0.8 || metrics.profitMargin < 0) {
+    return `Next show should protect margin first: keep ${formatCompactItems(winners, "strong CPI SKUs", 2)} visible, reduce exposure to ${formatCompactItems(dragItems, "drag SKUs", 2)}, and only use higher-cost traffic hooks when bidding depth is visible.`;
+  }
+  if (hasTrafficNote || hasStrategyNote) {
+    return "Keep the traffic hook and conversion product more tightly connected, then switch between prebid, fixed-price, and auction pace based on live bidding depth.";
+  }
+  if (hasInventoryNote) {
+    return "Use the next show to separate fresh winners from fatigued inventory so the team can keep volume without weakening the product mix.";
+  }
+  return "Keep the current winner mix visible, monitor drag SKUs early, and adjust pace before weak bidding windows compress margin.";
 }
 
 function getTrendValue(point: TrendPoint, metric: TrendMetric) {
@@ -2217,34 +2360,23 @@ export default function Home() {
       ? giveawayItems.map((item) => `${shortProductName(item.productName)} x${Math.round(item.orders)}`).join(", ")
       : "None detected in CSV";
     const giveawayCostLine = metrics.giveawayCost > 0 ? `\n- Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}` : "";
-    const noteContext = recordTiles
-      .map((tile) => ({
-        label: tile.label.trim() || "Untitled block",
-        value: tile.value.trim()
-      }))
-      .filter((tile) => tile.value.length > 0)
-      .map((tile) => `${tile.label}: ${compactReportText(tile.value, "", 110)}`);
+    const recordInsights = summarizeRecordTiles(recordTiles, 4);
+    const productStory = describeProductMix(categories, topGmvItems, skuGroups.winners, skuGroups.risk);
     const previousTrend = dailyMetrics
       .filter((point) => point.date && point.date < currentReportDate)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       .slice(0, 3);
-    const previousAvgGmv = previousTrend.length ? previousTrend.reduce((sum, point) => sum + point.gmv, 0) / previousTrend.length : 0;
-    const previousAvgAov = previousTrend.length ? previousTrend.reduce((sum, point) => sum + (point.aov ?? 0), 0) / previousTrend.length : 0;
-    const trendText = previousTrend.length
-      ? `Compared with recent ${previousTrend.length}-day avg, GMV was ${metrics.gmv >= previousAvgGmv ? "above" : "below"} trend (${decimalCurrency.format(previousAvgGmv)} avg) and AOV was ${metrics.aov >= previousAvgAov ? "stronger" : "softer"}.`
-      : "No recent daily trend baseline yet.";
-    const cpiText =
-      metrics.targetPriceCompletion >= 0.8
-        ? "Pricing stayed above the 80% line"
-        : "Pricing fell below the 80% line";
-    const marginText =
-      metrics.gmv > 1000 && metrics.profitMargin < 0
-        ? "GMV was volume-driven while margin was compressed"
-        : "Margin was supported by selective exposure";
-    const nextFocus =
-      metrics.targetPriceCompletion < 0.8
-        ? "Push stronger CPI SKUs and reduce drag exposure."
-        : "Keep winners visible and protect high-cost items in weak bidding.";
+    const kpiStory = describeKpiStory(metrics, previousTrend);
+    const closeout = buildReportCloseout(metrics, recordInsights, skuGroups.winners, skuGroups.risk);
+    const opsNarrative = recordInsights.length
+      ? recordInsights.map((item) => `- ${item.label}: ${item.text}`).join("\n")
+      : "- No extra record notes added";
+    const smartSummaryParts = [
+      productStory,
+      kpiStory,
+      recordInsights[0] ? `Key operating note: ${recordInsights[0].text}` : "",
+      closeout
+    ].filter(Boolean);
 
     return `Daily Show Summary
 
@@ -2268,12 +2400,10 @@ ${excludedSalesSummary.count ? `- Excluded from product mix: ${excludedSalesSumm
 - CSV giveaways: ${giveawayUsed}${giveawayCostLine}
 
 4. Ops Context
-${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No extra notes added"}
+${opsNarrative}
 
 5. Summary
-- ${cpiText}; ${marginText}.
-- ${trendText}
-- Next focus: ${nextFocus}`;
+${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
   }, [activeSalesItems, categories, currentReportDate, dailyMetrics, excludedSalesSummary, metrics, recordTiles, showInfo, skuExclusionRules, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
@@ -3675,14 +3805,14 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <p>Write daily operation notes as editable tiles. Saved entries append to the cumulative log for future AI review.</p>
               </div>
               <div className="record-save-panel">
-                <div>
+                <div className="record-save-primary">
                   <span className="record-save-kicker">Default save</span>
                   <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
                     <CheckCircle2 aria-hidden="true" size={16} />
                     Save to log
                   </button>
                 </div>
-                <div>
+                <div className="record-save-secondary">
                   <span className="record-save-kicker">Save to another date</span>
                   <div className="record-date-save">
                     <label className="inline-date-field">
@@ -3724,12 +3854,12 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
 
             <article className="panel record-history-entry">
               <div>
-                <span>Second layer</span>
-                <h3>Review saved history and host performance</h3>
-                <p>Open the cumulative log when you need older notes, saved reports, or host GMV/order records. Daily writing stays clean on this first layer.</p>
+                <span>Saved log</span>
+                <h3>History & host performance</h3>
+                <p>Open older notes, saved reports, and host GMV/order records without cluttering today's writing area.</p>
               </div>
               <button className="secondary-button" type="button" onClick={() => setRecordsView("history")}>
-                View history log
+                Open history
                 <ChevronRight aria-hidden="true" size={17} />
               </button>
             </article>

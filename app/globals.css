@@ -1979,6 +1979,10 @@ td {
   gap: 6px;
 }
 
+.record-save-primary .primary-button {
+  margin-top: 17px;
+}
+
 .record-save-kicker {
   color: var(--muted);
   font-size: 11px;
@@ -3116,6 +3120,10 @@ textarea:focus {
   .record-date-save .secondary-button,
   .record-save-panel .primary-button {
     width: 100%;
+  }
+
+  .record-save-primary .primary-button {
+    margin-top: 0;
   }
 
   .record-block-head {
