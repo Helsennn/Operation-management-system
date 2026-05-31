@@ -1933,6 +1933,32 @@ td {
   justify-content: flex-end;
 }
 
+.record-block-section {
+  display: grid;
+  gap: 12px;
+}
+
+.record-block-head {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.record-block-head h3 {
+  font-size: 18px;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.record-block-head p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 4px 0 0;
+}
+
 .record-summary-grid {
   display: grid;
   gap: 12px;
@@ -2965,6 +2991,16 @@ textarea:focus {
 
   .record-save-actions {
     justify-content: flex-start;
+  }
+
+  .record-block-head {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .record-block-head .secondary-button {
+    justify-self: start;
   }
 
   .upload-actions {

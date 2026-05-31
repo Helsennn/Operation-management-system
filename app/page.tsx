@@ -3667,9 +3667,6 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
                 <p>Write daily operation notes as editable tiles. Saved entries append to the cumulative log for future AI review.</p>
               </div>
               <div className="button-row record-save-actions">
-                <button className="secondary-button" type="button" onClick={addRecordTile}>
-                  Add tile
-                </button>
                 <button className="primary-button" type="button" onClick={() => saveCurrentNotesToRecords(currentReportDate, "today's log")}>
                   Save to log
                 </button>
@@ -3683,17 +3680,28 @@ ${noteContext.length ? noteContext.map((note) => `- ${note}`).join("\n") : "- No
               </div>
             </div>
 
-            <div className="notes-grid">
-              {recordTiles.map((tile) => (
-                <RecordTileEditor
-                  key={tile.id}
-                  tile={tile}
-                  onDelete={() => deleteRecordTile(tile.id)}
-                  onLabelChange={(value) => updateRecordTileLabel(tile.id, value)}
-                  onValueChange={(value) => updateRecordTileValue(tile, value)}
-                />
-              ))}
-            </div>
+            <section className="record-block-section">
+              <div className="record-block-head">
+                <div>
+                  <h3>Record blocks</h3>
+                  <p>Each block title becomes a section label in the Daily Report.</p>
+                </div>
+                <button className="secondary-button" type="button" onClick={addRecordTile}>
+                  Add block
+                </button>
+              </div>
+              <div className="notes-grid">
+                {recordTiles.map((tile) => (
+                  <RecordTileEditor
+                    key={tile.id}
+                    tile={tile}
+                    onDelete={() => deleteRecordTile(tile.id)}
+                    onLabelChange={(value) => updateRecordTileLabel(tile.id, value)}
+                    onValueChange={(value) => updateRecordTileValue(tile, value)}
+                  />
+                ))}
+              </div>
+            </section>
 
             <article className="panel host-performance-panel">
               <div className="panel-head">
