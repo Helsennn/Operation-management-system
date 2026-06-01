@@ -219,6 +219,15 @@ type ExternalDailyPoint = {
   buyers: number;
 };
 
+type DailyOverviewPoint = {
+  date: string;
+  label?: string;
+  gmv: number;
+  orders: number;
+  buyers?: number;
+  source?: "local" | "external";
+};
+
 type ExternalWeeklyPoint = {
   week: string;
   gmv: number;
@@ -1679,7 +1688,7 @@ function TrendChart({
   );
 }
 
-function DailyOverviewChart({ data }: { data: ExternalDailyPoint[] }) {
+function DailyOverviewChart({ data }: { data: DailyOverviewPoint[] }) {
   const maxGmv = Math.max(...data.map((day) => day.gmv), 1);
 
   return (
@@ -1687,9 +1696,13 @@ function DailyOverviewChart({ data }: { data: ExternalDailyPoint[] }) {
       {data.map((day, index) => (
         <article className="daily-overview-bar" key={`${day.date}-${index}`}>
           <div>
-            <span>{formatShortScheduleDate(day.date)}</span>
+            <span>{day.label ?? formatDailyTrendLabel(day.date)}</span>
             <strong>{currency.format(day.gmv)}</strong>
-            <small>{day.orders.toLocaleString()} orders · {day.buyers.toLocaleString()} buyers</small>
+            <small>
+              {day.orders.toLocaleString()} orders
+              {typeof day.buyers === "number" ? ` · ${day.buyers.toLocaleString()} buyers` : ""}
+              {day.source === "local" ? " · Daily Ops" : ""}
+            </small>
           </div>
           <div className="daily-bar-track" aria-hidden="true">
             <span style={{ width: `${Math.max((day.gmv / maxGmv) * 100, 3)}%` }} />
@@ -2243,6 +2256,26 @@ export default function Home() {
   const latestExternalWeek = externalDashboard?.weekly?.at(-1);
   const latestExternalDaily = externalDashboard?.latest_daily ?? [];
   const latestExternalDay = latestExternalDaily.at(-1);
+  const localDailyOverviewData = displayedDailyMetrics.length
+    ? aggregateDailyTrendPoints(displayedDailyMetrics).slice(-7).map<DailyOverviewPoint>((point) => ({
+        date: point.date ?? point.label,
+        label: point.date ? formatDailyTrendLabel(point.date) : point.label,
+        gmv: point.gmv,
+        orders: point.orders ?? 0,
+        source: "local"
+      }))
+    : [];
+  const externalDailyOverviewData = latestExternalDaily.slice(-7).map<DailyOverviewPoint>((point) => ({
+    ...point,
+    label: formatDailyTrendLabel(point.date),
+    source: "external"
+  }));
+  const recentDailyOverviewData = localDailyOverviewData.length ? localDailyOverviewData : externalDailyOverviewData;
+  const recentDailySourceText = localDailyOverviewData.length
+    ? `Synced with Daily Ops uploads and current SKU filter. Showing ${localDailyOverviewData.length} local day${localDailyOverviewData.length === 1 ? "" : "s"}.`
+    : latestExternalDaily.length
+      ? `Fallback preview from Report Cockpit. Updated ${externalDashboard?.generated_at ?? "recently"}.`
+      : "Upload a daily CSV to build the local Daily Ops trend.";
   const targetCompletionBand = getTargetCompletionBand(metrics.targetPriceCompletion);
   const productMixHealth =
     skuGroups.winners.length === 0 && skuGroups.risk.length > 0
@@ -4199,13 +4232,13 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
                   <div className="panel-head">
                     <div>
                       <h3>Recent daily GMV</h3>
-                      <p>{latestExternalDaily.length ? `Small context preview from Report Cockpit. Updated ${externalDashboard?.generated_at ?? "recently"}.` : "Optional daily context appears here when Report Cockpit data is available."}</p>
+                      <p>{recentDailySourceText}</p>
                     </div>
                   </div>
-                  {latestExternalDaily.length ? (
-                    <DailyOverviewChart data={latestExternalDaily} />
+                  {recentDailyOverviewData.length ? (
+                    <DailyOverviewChart data={recentDailyOverviewData} />
                   ) : (
-                    <div className="empty-chart">No external daily rows loaded. Today's local CSV insights still work above.</div>
+                    <div className="empty-chart">No local daily trend yet. Upload a CSV or add a manual trend point.</div>
                   )}
                 </article>
               </div>
