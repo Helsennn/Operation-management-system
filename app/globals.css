@@ -845,7 +845,7 @@ dt,
   align-items: end;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr) auto;
+  grid-template-columns: minmax(0, 1.25fr) minmax(180px, 0.7fr) minmax(180px, 0.7fr) auto;
   padding: 18px;
 }
 

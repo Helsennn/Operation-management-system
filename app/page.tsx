@@ -677,20 +677,34 @@ function inferCategory(productName: string) {
   return prefix || "Other";
 }
 
-function parseSkuExclusionRules(value: string) {
+function parseSkuFilterRules(value: string) {
   return value
     .split(/[,，;；\n]+/)
     .map((rule) => rule.trim().toUpperCase())
     .filter(Boolean);
 }
 
-function isSkuExcludedByRules(item: SalesItem, rulesText: string) {
-  const rules = parseSkuExclusionRules(rulesText);
+function matchesSkuFilterRule(item: SalesItem, rulesText: string) {
+  const rules = parseSkuFilterRules(rulesText);
   if (!rules.length) return false;
 
   const productName = item.productName.trim().toUpperCase();
   const prefix = inferCategory(item.productName).toUpperCase();
-  return rules.some((rule) => prefix === rule || productName.startsWith(rule));
+  return rules.some((rule) => prefix === rule || productName.startsWith(rule) || productName.includes(rule));
+}
+
+function isSkuExcludedByRules(item: SalesItem, rulesText: string) {
+  return matchesSkuFilterRule(item, rulesText);
+}
+
+function isSkuIncludedByRules(item: SalesItem, rulesText: string) {
+  const rules = parseSkuFilterRules(rulesText);
+  if (!rules.length) return true;
+  return matchesSkuFilterRule(item, rulesText);
+}
+
+function applySkuFilters(items: SalesItem[], excludeRules: string, includeRules: string) {
+  return items.filter((item) => isSkuIncludedByRules(item, includeRules) && !isSkuExcludedByRules(item, excludeRules));
 }
 
 function applySkuExclusions(items: SalesItem[], rulesText: string) {
@@ -1175,6 +1189,26 @@ function buildReportCloseout(metrics: ReportMetrics, recordInsights: Array<{ lab
     return "Use the next show to separate fresh winners from fatigued inventory so the team can keep volume without weakening the product mix.";
   }
   return "Keep the current winner mix visible, monitor drag SKUs early, and adjust pace before weak bidding windows compress margin.";
+}
+
+function formatFullOpsContext(tiles: RecordNoteTile[]) {
+  const lines = tiles
+    .map((tile) => ({
+      label: tile.label.trim() || "Ops note",
+      value: tile.value.replace(/\*\*/g, "").trim()
+    }))
+    .filter((tile) => tile.value.length > 0)
+    .map((tile) => {
+      const lines = tile.value
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const value = lines.join("\n  ");
+      if (lines.length > 1) return `- ${tile.label}:\n  ${value}`;
+      return `- ${tile.label}: ${value}`;
+    });
+
+  return lines.length ? lines.join("\n") : "- No extra record notes added";
 }
 
 function getTrendValue(point: TrendPoint, metric: TrendMetric) {
@@ -1733,6 +1767,7 @@ type CloudStateKey =
   | "opsNotes"
   | "recordTiles"
   | "skuExclusionRules"
+  | "skuIncludeRules"
   | "strategyGroups"
   | "opsRecords"
   | "reportHistory"
@@ -1814,6 +1849,7 @@ export default function Home() {
   const [opsNotes, setOpsNotes] = useState<OpsNotes>(initialNotes);
   const [recordTiles, setRecordTiles] = useState<RecordNoteTile[]>(initialRecordTiles);
   const [skuExclusionRules, setSkuExclusionRules] = useState("530, EVENT");
+  const [skuIncludeRules, setSkuIncludeRules] = useState("");
   const [strategyGroups, setStrategyGroups] = useState<StrategyGroup[]>(initialStrategyGroups);
   const [opsRecords, setOpsRecords] = useState<OpsRecord[]>(initialOpsRecords);
   const [reportHistory, setReportHistory] = useState<ReportSnapshot[]>([]);
@@ -1875,6 +1911,7 @@ export default function Home() {
     const localOpsNotes = readLocalJson<OpsNotes>("dailyOps.opsNotes.v1", initialNotes);
     const localRecordTiles = readLocalJson<RecordNoteTile[]>("dailyOps.recordTiles.v1", createRecordTiles(localOpsNotes));
     const localSkuExclusionRules = readLocalJson<string>("dailyOps.skuExclusionRules.v1", "530, EVENT");
+    const localSkuIncludeRules = readLocalJson<string>("dailyOps.skuIncludeRules.v1", "");
     const localStrategy = readLocalJson<StrategyGroup[]>("dailyOps.strategyGroups.v1", initialStrategyGroups);
     const localRecords = readLocalJson<OpsRecord[]>("dailyOps.opsRecords.v1", initialOpsRecords);
     const localReportHistory = readLocalJson<ReportSnapshot[]>("dailyOps.reportHistory.v1", []);
@@ -1888,6 +1925,7 @@ export default function Home() {
     setOpsNotes(localOpsNotes);
     if (Array.isArray(localRecordTiles)) setRecordTiles(localRecordTiles);
     setSkuExclusionRules(localSkuExclusionRules);
+    setSkuIncludeRules(localSkuIncludeRules);
     if (Array.isArray(localStrategy)) setStrategyGroups(localStrategy);
     if (Array.isArray(localRecords)) setOpsRecords(localRecords);
     if (Array.isArray(localReportHistory)) setReportHistory(localReportHistory);
@@ -1911,6 +1949,7 @@ export default function Home() {
           cloudOpsNotes,
           cloudRecordTiles,
           cloudSkuExclusionRules,
+          cloudSkuIncludeRules,
           cloudStrategy,
           cloudRecords,
           cloudReportHistory,
@@ -1922,6 +1961,7 @@ export default function Home() {
           loadCloudValue<OpsNotes>("opsNotes"),
           loadCloudValue<RecordNoteTile[]>("recordTiles"),
           loadCloudValue<string>("skuExclusionRules"),
+          loadCloudValue<string>("skuIncludeRules"),
           loadCloudValue<StrategyGroup[]>("strategyGroups"),
           loadCloudValue<OpsRecord[]>("opsRecords"),
           loadCloudValue<ReportSnapshot[]>("reportHistory"),
@@ -1940,6 +1980,7 @@ export default function Home() {
           setRecordTiles(createRecordTiles(cloudOpsNotes));
         }
         if (typeof cloudSkuExclusionRules === "string") setSkuExclusionRules(cloudSkuExclusionRules);
+        if (typeof cloudSkuIncludeRules === "string") setSkuIncludeRules(cloudSkuIncludeRules);
         if (Array.isArray(cloudStrategy)) setStrategyGroups(cloudStrategy);
         if (Array.isArray(cloudRecords)) setOpsRecords(cloudRecords);
         if (Array.isArray(cloudReportHistory)) setReportHistory(cloudReportHistory);
@@ -2019,6 +2060,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!localReady.current) return;
+    window.localStorage.setItem("dailyOps.skuIncludeRules.v1", JSON.stringify(skuIncludeRules));
+    queueCloudSave("skuIncludeRules", skuIncludeRules);
+  }, [skuIncludeRules]);
+
+  useEffect(() => {
+    if (!localReady.current) return;
     window.localStorage.setItem("dailyOps.strategyGroups.v1", JSON.stringify(strategyGroups));
     queueCloudSave("strategyGroups", strategyGroups);
   }, [strategyGroups]);
@@ -2069,16 +2116,26 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const activeSalesItems = useMemo(() => applySkuExclusions(salesItems, skuExclusionRules), [salesItems, skuExclusionRules]);
+  const activeSalesItems = useMemo(() => applySkuFilters(salesItems, skuExclusionRules, skuIncludeRules), [salesItems, skuExclusionRules, skuIncludeRules]);
+  const activeSalesItemIds = useMemo(() => new Set(activeSalesItems.map((item) => item.id)), [activeSalesItems]);
   const excludedSalesItems = useMemo(
-    () => salesItems.filter((item) => isSkuExcludedByRules(item, skuExclusionRules)),
-    [salesItems, skuExclusionRules]
+    () => salesItems.filter((item) => !activeSalesItemIds.has(item.id)),
+    [activeSalesItemIds, salesItems]
   );
-  const excludedSalesSummary = useMemo(() => {
-    const gmv = excludedSalesItems.reduce((sum, item) => sum + item.totalSales, 0);
-    const orders = excludedSalesItems.reduce((sum, item) => sum + item.orders, 0);
-    return { gmv, orders, count: excludedSalesItems.length };
-  }, [excludedSalesItems]);
+  const filterSummary = useMemo(() => {
+    const filteredOutGmv = excludedSalesItems.reduce((sum, item) => sum + item.totalSales, 0);
+    const filteredOutOrders = excludedSalesItems.reduce((sum, item) => sum + item.orders, 0);
+    const activeGmv = activeSalesItems.reduce((sum, item) => sum + item.totalSales, 0);
+    const activeOrders = activeSalesItems.reduce((sum, item) => sum + item.orders, 0);
+    return {
+      activeCount: activeSalesItems.length,
+      activeGmv,
+      activeOrders,
+      filteredOutCount: excludedSalesItems.length,
+      filteredOutGmv,
+      filteredOutOrders
+    };
+  }, [activeSalesItems, excludedSalesItems]);
 
   const metrics = useMemo(() => {
     const sellableItems = activeSalesItems.filter((item) => !item.isGiveaway);
@@ -2368,13 +2425,10 @@ export default function Home() {
       .slice(0, 3);
     const kpiStory = describeKpiStory(metrics, previousTrend);
     const closeout = buildReportCloseout(metrics, recordInsights, skuGroups.winners, skuGroups.risk);
-    const opsNarrative = recordInsights.length
-      ? recordInsights.map((item) => `- ${item.label}: ${item.text}`).join("\n")
-      : "- No extra record notes added";
+    const opsNarrative = formatFullOpsContext(recordTiles);
     const smartSummaryParts = [
       productStory,
       kpiStory,
-      recordInsights[0] ? `Key operating note: ${recordInsights[0].text}` : "",
       closeout
     ].filter(Boolean);
 
@@ -2394,7 +2448,7 @@ Hours: ${showInfo.livestreamHours} | Start: ${showInfo.onTimeStart}
 - Winners: ${winningItems}
 - Top GMV: ${highGmvItems}
 - Drag: ${weakItems}
-${excludedSalesSummary.count ? `- Excluded from product mix: ${excludedSalesSummary.count} SKUs · ${decimalCurrency.format(excludedSalesSummary.gmv)} GMV` : ""}
+${filterSummary.filteredOutCount ? `- Filtered out: ${filterSummary.filteredOutCount} SKUs · ${decimalCurrency.format(filterSummary.filteredOutGmv)} GMV` : ""}
 
 3. Promotion / Giveaway
 - CSV giveaways: ${giveawayUsed}${giveawayCostLine}
@@ -2404,7 +2458,7 @@ ${opsNarrative}
 
 5. Summary
 ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
-  }, [activeSalesItems, categories, currentReportDate, dailyMetrics, excludedSalesSummary, metrics, recordTiles, showInfo, skuExclusionRules, skuGroups]);
+  }, [activeSalesItems, categories, currentReportDate, dailyMetrics, filterSummary, metrics, recordTiles, showInfo, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
@@ -3067,7 +3121,7 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
     setSalesItems(rows);
     setSalesOutputs(generatedOutputs);
     const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
-    const filteredRows = applySkuExclusions(rows, skuExclusionRules);
+    const filteredRows = applySkuFilters(rows, skuExclusionRules, skuIncludeRules);
     const dailyPoint = buildDailyTrendPoint(filteredRows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
     upsertDailyTrendPoint(dailyPoint);
     updateReportDate(trendDate);
@@ -3261,7 +3315,7 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
             <article className="panel exclusion-panel global-filter-panel">
               <div>
                 <h3>Global SKU filter</h3>
-                <p>Controls the full data view: Today KPI, trend current day, Analytics, Product Analysis, and Daily Report.</p>
+                <p>Controls Today KPI, current trend point, Analytics, Product Analysis, and Daily Report. Exclude removes items; Only include narrows the view.</p>
               </div>
               <label>
                 Excluded prefixes
@@ -3271,8 +3325,16 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
                   placeholder="530, EVENT"
                 />
               </label>
+              <label>
+                Only include
+                <input
+                  value={skuIncludeRules}
+                  onChange={(event) => setSkuIncludeRules(event.target.value)}
+                  placeholder="Leave blank for all, or HOU, ELE"
+                />
+              </label>
               <p className="status-line">
-                Excluding {excludedSalesSummary.count} SKU{excludedSalesSummary.count === 1 ? "" : "s"} · {decimalCurrency.format(excludedSalesSummary.gmv)} GMV · {Math.round(excludedSalesSummary.orders).toLocaleString()} orders
+                Showing {filterSummary.activeCount} SKU{filterSummary.activeCount === 1 ? "" : "s"} · {decimalCurrency.format(filterSummary.activeGmv)} GMV · filtered out {filterSummary.filteredOutCount}
               </p>
             </article>
 
@@ -3623,19 +3685,27 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
 
             <article className="panel exclusion-panel">
               <div>
-                <h3>SKU exclusion rules</h3>
-                <p>Same global filter as Today. Changes here update the full dashboard and Daily Report. Raw generated CSV exports stay unchanged.</p>
+                <h3>SKU filter rules</h3>
+                <p>Same global filter as Today. Changes here update the full dashboard, Analytics, and Daily Report. Raw generated CSV exports stay unchanged.</p>
               </div>
               <label>
-                Prefixes
+                Excluded prefixes
                 <input
                   value={skuExclusionRules}
                   onChange={(event) => setSkuExclusionRules(event.target.value)}
                   placeholder="530, EVENT"
                 />
               </label>
+              <label>
+                Only include
+                <input
+                  value={skuIncludeRules}
+                  onChange={(event) => setSkuIncludeRules(event.target.value)}
+                  placeholder="Leave blank for all, or HOU, ELE"
+                />
+              </label>
               <p className="status-line">
-                Excluding {excludedSalesSummary.count} SKU{excludedSalesSummary.count === 1 ? "" : "s"} · {decimalCurrency.format(excludedSalesSummary.gmv)} GMV · {Math.round(excludedSalesSummary.orders).toLocaleString()} orders
+                Showing {filterSummary.activeCount} SKU{filterSummary.activeCount === 1 ? "" : "s"} · {decimalCurrency.format(filterSummary.activeGmv)} GMV · filtered out {filterSummary.filteredOutCount}
               </p>
             </article>
 
@@ -4029,6 +4099,32 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
                 </label>
               </div>
             </div>
+
+            <article className="panel exclusion-panel analytics-filter-panel">
+              <div>
+                <h3>Analytics data filter</h3>
+                <p>Uses the same filtered SKU view as Today and Daily Report, so charts and recommendation cards stay aligned.</p>
+              </div>
+              <label>
+                Excluded prefixes
+                <input
+                  value={skuExclusionRules}
+                  onChange={(event) => setSkuExclusionRules(event.target.value)}
+                  placeholder="530, EVENT"
+                />
+              </label>
+              <label>
+                Only include
+                <input
+                  value={skuIncludeRules}
+                  onChange={(event) => setSkuIncludeRules(event.target.value)}
+                  placeholder="Leave blank for all, or HOU, ELE"
+                />
+              </label>
+              <p className="status-line">
+                Showing {filterSummary.activeCount} SKU{filterSummary.activeCount === 1 ? "" : "s"} · {decimalCurrency.format(filterSummary.activeGmv)} GMV · filtered out {filterSummary.filteredOutCount}
+              </p>
+            </article>
 
             <div className="analytics-layout">
               <div className="analytics-main">
