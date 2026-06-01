@@ -1042,17 +1042,43 @@ function compactReportText(value: string | undefined, fallback: string, maxLengt
   return `${normalized.slice(0, maxLength - 1).trim()}...`;
 }
 
+function isProductNoisePart(value: string) {
+  const normalized = value.trim();
+  return /^(black|white|gray|grey|silver|blue|green|red|pink|purple|orange|random color|light blue box|flat box|long box|champagne color|stainless steel)$/i.test(normalized)
+    || /^\d+\s?(mm|cm|in|inch|")$/i.test(normalized)
+    || /^(new\s*)?type\s*\d+$/i.test(normalized);
+}
+
 function shortProductName(value: string) {
   const withoutPrefix = value.replace(/^\s*[^:：]{1,40}\s*[:：]\s*/, "");
   const bracketNames = Array.from(withoutPrefix.matchAll(/\[([^\]]{2,90})\]/g))
     .map((match) => match[1].trim())
     .filter(Boolean);
   const source = bracketNames.find((name) => /[a-z0-9]/i.test(name)) || withoutPrefix;
-  const cleaned = source
+  const commaTrimmed = source
+    .split(",")
+    .filter((part, index) => index === 0 || !/\b(\d+\s?(lb|lbs|inch|in|qt|pcs|pack)|stainless|steel|color|random)\b/i.test(part))
+    .join(" ");
+  const hyphenParts = commaTrimmed
+    .split(/\s*[-–—]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const productPart =
+    hyphenParts.length >= 3
+      ? hyphenParts.slice(1).find((part) => !isProductNoisePart(part)) || hyphenParts[0]
+      : hyphenParts.length === 2 && isProductNoisePart(hyphenParts[1])
+        ? hyphenParts[0]
+        : hyphenParts.length === 2 && /^\d+\s+\w+/i.test(hyphenParts[1]) && hyphenParts[0].split(/\s+/).length >= 2
+          ? commaTrimmed
+        : hyphenParts.length === 2 && /^[A-Z0-9]{2,}$/i.test(hyphenParts[0]) && hyphenParts[1].split(/\s+/).length >= 2
+          ? hyphenParts[1]
+          : hyphenParts[0] || commaTrimmed;
+  const cleaned = productPart
     .replace(/\[[^\]]+\]/g, " ")
     .replace(/#\d+\b/g, "")
-    .replace(/\b(no[-\s]?press|quick[-\s]?dry|opaque|multi[-\s]?use|portable|heavy[-\s]?duty)\b/gi, " ")
-    .replace(/\b(with|for|and|the|set|pack|pcs|piece|pieces|new|brand|assorted)\b/gi, " ")
+    .replace(/\b(no[-\s]?press|quick[-\s]?dry|opaque|multi[-\s]?use|portable|heavy[-\s]?duty|rechargeable|waterproof|cordless|compact|new[-\s]?type\s*\d+|type\s*\d+)\b/gi, " ")
+    .replace(/\b(with|for|and|the|set|pack|pcs|piece|pieces|new|brand|assorted|home|men|women|kids)\b/gi, " ")
+    .replace(/\b(\d+\s?(lb|lbs|inch|in|qt|pcs|pack)|stainless|steel|black|white|gray|grey|silver|random color|color)\b/gi, " ")
     .replace(/[-–—_,]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
