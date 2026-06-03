@@ -1101,6 +1101,36 @@ function formatCompactItems(items: SalesItem[], fallback: string, limit = 3) {
   return selected.length ? selected.join(", ") : fallback;
 }
 
+function inferSoldMixLabel(item: SalesItem) {
+  const text = `${item.productName} ${item.productDescription} ${shortProductName(item.productName)}`.toLowerCase();
+  if (/\b(monitor|koorui|fhd|curved|gaming display)\b/.test(text)) return "Monitors";
+  if (/\b(power strip|surge|charger|charging|power bank|wireless charger|magsafe|battery)\b/.test(text)) return "Power / charging";
+  if (/\b(air fryer|slushie|ice maker|stand mixer|toaster|kitchen|scale|coffee|blender)\b/.test(text)) return "Kitchen appliances";
+  if (/\b(toothbrush|trimmer|shaver|massager|grooming|neck fan|personal care)\b/.test(text)) return "Beauty / personal care";
+  if (/\b(smart lock|security camera|dash cam|signal booster|camera|locator|tracker)\b/.test(text)) return "Smart home / security";
+  if (/\b(speaker|earphone|headphone|audio|bluetooth)\b/.test(text)) return "Audio";
+  if (/\b(ratchet|wrench|drill|tool|shovel|socket|kit|air pump|inflator)\b/.test(text)) return "Tools";
+  if (/\b(camping|lantern|survival|outdoor|tactical)\b/.test(text)) return "Outdoor";
+  if (/\b(lamp|humidifier|tissue box|vacuum|home|pillow)\b/.test(text)) return "Home goods";
+  if (/\b(laminator|label maker|printer|office|stylus)\b/.test(text)) return "Office tools";
+  return "Mixed electronics";
+}
+
+function buildSoldMixLabels(items: SalesItem[], limit = 4) {
+  const totals = items
+    .filter((item) => !item.isGiveaway)
+    .reduce<Map<string, number>>((map, item) => {
+      const label = inferSoldMixLabel(item);
+      map.set(label, (map.get(label) || 0) + item.totalSales);
+      return map;
+    }, new Map());
+
+  return Array.from(totals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label]) => label);
+}
+
 function formatReportItems(items: string[], fallback: string, limit = 3) {
   const selected = items.filter(Boolean).slice(0, limit);
   return selected.length ? selected.join("; ") : fallback;
@@ -2482,7 +2512,8 @@ export default function Home() {
   }, [activeSalesItems, cpiChartRows, selectedSkuId]);
 
   const generatedReport = useMemo(() => {
-    const topCategories = categories.slice(0, 3).join(", ") || "No category detected";
+    const soldMixLabels = buildSoldMixLabels(activeSalesItems, 4);
+    const topCategories = soldMixLabels.join(", ") || "No product mix detected";
     const topGmvItems = activeSalesItems.filter((item) => !item.isGiveaway).sort((a, b) => b.totalSales - a.totalSales);
     const winningItems = formatCompactItems(skuGroups.winners, "No 100%+ CPI SKU", 3);
     const weakItems = formatCompactItems(skuGroups.risk, "No major drag SKU", 2);
@@ -2493,7 +2524,7 @@ export default function Home() {
       : "None detected in CSV";
     const giveawayCostLine = metrics.giveawayCost > 0 ? `\n- Est. cost: ${decimalCurrency.format(metrics.giveawayCost)}` : "";
     const recordInsights = summarizeRecordTiles(recordTiles, 4);
-    const productStory = describeProductMix(categories, topGmvItems, skuGroups.winners, skuGroups.risk);
+    const productStory = describeProductMix(soldMixLabels, topGmvItems, skuGroups.winners, skuGroups.risk);
     const previousTrend = dailyMetrics
       .filter((point) => point.date && point.date < currentReportDate)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -2533,7 +2564,7 @@ ${opsNarrative}
 
 5. Summary
 ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
-  }, [activeSalesItems, categories, currentReportDate, dailyMetrics, filterSummary, metrics, recordTiles, showInfo, skuGroups]);
+  }, [activeSalesItems, currentReportDate, dailyMetrics, filterSummary, metrics, recordTiles, showInfo, skuGroups]);
 
   function updateShow<K extends keyof ShowInfo>(key: K, value: ShowInfo[K]) {
     setShowInfo((current) => ({ ...current, [key]: value }));
