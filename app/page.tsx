@@ -25,6 +25,7 @@ import {
 type Segment = "today" | "schedule" | "report" | "records" | "analytics";
 type RecordsView = "write" | "history";
 type TrendMetric = "gmv" | "gmv_per_hour" | "aov";
+type TrendZoom = "fit" | "roomy" | "detail";
 type CpiView = "all" | "winners" | "optimize" | "risk";
 type MagnetMetric =
   | "gmv"
@@ -538,6 +539,12 @@ const trendOptions: Array<{ id: TrendMetric; label: string }> = [
   { id: "aov", label: "AOV" }
 ];
 
+const trendZoomOptions: Array<{ id: TrendZoom; label: string }> = [
+  { id: "fit", label: "Fit" },
+  { id: "roomy", label: "Roomy" },
+  { id: "detail", label: "Detail" }
+];
+
 const cpiViewOptions: Array<{ id: CpiView; label: string }> = [
   { id: "all", label: "All" },
   { id: "winners", label: "100%+" },
@@ -1049,31 +1056,32 @@ function isProductNoisePart(value: string) {
     || /^(new\s*)?type\s*\d+$/i.test(normalized);
 }
 
+function trimProductNameNoise(value: string) {
+  let cleaned = value.replace(/\s+/g, " ").trim();
+  for (let index = 0; index < 4; index += 1) {
+    const next = cleaned
+      .replace(/\s*[-–—]\s*(black|white|gray|grey|silver|blue|green|red|pink|purple|orange|random color|light blue box|flat box|long box|champagne color|stainless steel)$/i, "")
+      .replace(/\s*[-–—]\s*\d+\s?(mm|cm|in|inch|")$/i, "")
+      .replace(/,\s*(\d+\s?(lb|lbs|inch|in|qt|pcs|pack)|stainless steel|stainless|steel|random color|assorted color).*$/i, "")
+      .trim();
+    if (next === cleaned) break;
+    cleaned = next;
+  }
+  const spacedHyphenParts = cleaned.split(/\s+[-–—]\s+/).map((part) => part.trim()).filter(Boolean);
+  if (spacedHyphenParts.length >= 3 && /^(\d+|with|portable|fast|smart|compact|dual|full|hot\/cold)/i.test(spacedHyphenParts[2])) {
+    cleaned = spacedHyphenParts.slice(0, 2).join(" ");
+  }
+  return cleaned;
+}
+
 function shortProductName(value: string) {
   const withoutPrefix = value.replace(/^\s*[^:：]{1,40}\s*[:：]\s*/, "");
   const bracketNames = Array.from(withoutPrefix.matchAll(/\[([^\]]{2,90})\]/g))
     .map((match) => match[1].trim())
     .filter(Boolean);
-  const source = bracketNames.find((name) => /[a-z0-9]/i.test(name)) || withoutPrefix;
-  const commaTrimmed = source
-    .split(",")
-    .filter((part, index) => index === 0 || !/\b(\d+\s?(lb|lbs|inch|in|qt|pcs|pack)|stainless|steel|color|random)\b/i.test(part))
-    .join(" ");
-  const hyphenParts = commaTrimmed
-    .split(/\s*[-–—]\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const productPart =
-    hyphenParts.length >= 3
-      ? hyphenParts.slice(1).find((part) => !isProductNoisePart(part)) || hyphenParts[0]
-      : hyphenParts.length === 2 && isProductNoisePart(hyphenParts[1])
-        ? hyphenParts[0]
-        : hyphenParts.length === 2 && /^\d+\s+\w+/i.test(hyphenParts[1]) && hyphenParts[0].split(/\s+/).length >= 2
-          ? commaTrimmed
-        : hyphenParts.length === 2 && /^[A-Z0-9]{2,}$/i.test(hyphenParts[0]) && hyphenParts[1].split(/\s+/).length >= 2
-          ? hyphenParts[1]
-          : hyphenParts[0] || commaTrimmed;
-  const cleaned = productPart
+  const bracketSource = bracketNames.find((name) => /[a-z0-9]/i.test(name));
+  const source = trimProductNameNoise(bracketSource || withoutPrefix.split(/\s+-\s+/)[0] || withoutPrefix);
+  const cleaned = source
     .replace(/\[[^\]]+\]/g, " ")
     .replace(/#\d+\b/g, "")
     .replace(/\b(no[-\s]?press|quick[-\s]?dry|opaque|multi[-\s]?use|portable|heavy[-\s]?duty|rechargeable|waterproof|cordless|compact|new[-\s]?type\s*\d+|type\s*\d+)\b/gi, " ")
@@ -1083,6 +1091,7 @@ function shortProductName(value: string) {
     .replace(/\s+/g, " ")
     .trim();
   const words = cleaned.split(" ").filter(Boolean);
+  if (words.length === 1 && isProductNoisePart(words[0])) return bracketSource || value;
   if (words.length <= 5) return cleaned || value;
   return words.slice(0, 5).join(" ");
 }
@@ -1655,16 +1664,19 @@ function TrendChart({
   data,
   metric,
   selectedIndex,
-  onSelect
+  onSelect,
+  zoom = "roomy"
 }: {
   data: TrendPoint[];
   metric: TrendMetric;
   selectedIndex: number;
   onSelect: (index: number) => void;
+  zoom?: TrendZoom;
 }) {
-  const width = 760;
-  const height = 250;
-  const padding = { top: 22, right: 54, bottom: 44, left: 54 };
+  const minPointGap = zoom === "detail" ? 118 : zoom === "roomy" ? 92 : 72;
+  const width = Math.max(760, 108 + Math.max(data.length - 1, 1) * minPointGap);
+  const height = 270;
+  const padding = { top: 22, right: 54, bottom: 58, left: 54 };
   const values = data.map((week) => getTrendValue(week, metric));
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
@@ -1687,11 +1699,11 @@ function TrendChart({
 
   return (
     <div className="chart-scroll">
-      <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metric} trend chart`}>
+      <svg className="trend-chart" style={{ width }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metric} trend chart`}>
         <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
         <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
         <text x={padding.left} y={18}>{formatTrendValue(metric, max)}</text>
-        <text x={padding.left} y={height - 12}>{formatTrendValue(metric, min)}</text>
+        <text x={padding.left} y={height - 10}>{formatTrendValue(metric, min)}</text>
         <path d={path} />
       {points.map((point, index) => (
           <g key={`${point.point.label}-${index}`}>
@@ -1706,7 +1718,10 @@ function TrendChart({
               role="button"
               tabIndex={0}
             />
-            <text className="axis-label" x={point.x} y={height - 24}>{point.point.label}</text>
+            <text className="axis-label" x={point.x} y={height - 38}>
+              <tspan x={point.x}>{point.point.label.split(" ")[0]}</tspan>
+              <tspan x={point.x} dy="14">{point.point.label.split(" ").slice(1).join(" ")}</tspan>
+            </text>
           </g>
         ))}
       </svg>
@@ -1910,6 +1925,7 @@ export default function Home() {
   const [manualTrendAov, setManualTrendAov] = useState("");
   const [manualTrendOrders, setManualTrendOrders] = useState("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("gmv");
+  const [trendZoom, setTrendZoom] = useState<TrendZoom>("roomy");
   const [selectedDailyTrendIndex, setSelectedDailyTrendIndex] = useState(sampleDailyMetrics.length - 1);
   const [selectedWeeklyTrendIndex, setSelectedWeeklyTrendIndex] = useState(0);
   const [cpiView, setCpiView] = useState<CpiView>("all");
@@ -3425,18 +3441,27 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
                     {selectedDailyTrend?.orders ? ` · ${Math.round(selectedDailyTrend.orders).toLocaleString()} orders` : ""}
                   </p>
                 </div>
-                <SegmentedControl<TrendMetric>
-                  options={trendOptions}
-                  value={trendMetric}
-                  onChange={setTrendMetric}
-                  label="Trend metric"
-                />
+                <div className="trend-panel-controls">
+                  <SegmentedControl<TrendMetric>
+                    options={trendOptions}
+                    value={trendMetric}
+                    onChange={setTrendMetric}
+                    label="Trend metric"
+                  />
+                  <SegmentedControl<TrendZoom>
+                    options={trendZoomOptions}
+                    value={trendZoom}
+                    onChange={setTrendZoom}
+                    label="Chart zoom"
+                  />
+                </div>
               </div>
               <TrendChart
                 data={dailyTrendData}
                 metric={trendMetric}
                 selectedIndex={Math.min(selectedDailyTrendIndex, dailyTrendData.length - 1)}
                 onSelect={setSelectedDailyTrendIndex}
+                zoom={trendZoom}
               />
               <div className="trend-editor">
                 <label>Date<input type="date" value={manualTrendDate} onChange={(event) => setManualTrendDate(event.target.value)} /></label>

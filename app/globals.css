@@ -642,15 +642,40 @@ dt,
 }
 
 .chart-scroll {
+  margin-inline: -4px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  overscroll-behavior-x: contain;
+  padding: 0 4px 8px;
   scroll-padding-inline: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chart-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.chart-scroll::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.72);
+  border-radius: 999px;
+}
+
+.chart-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, rgba(0, 122, 255, 0.55), rgba(52, 199, 89, 0.58));
+  border-radius: 999px;
+}
+
+.trend-panel-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .trend-chart {
   display: block;
   min-width: 640px;
-  width: 100%;
+  max-width: none;
 }
 
 .trend-chart line {
@@ -3151,6 +3176,11 @@ textarea:focus {
 
   .upload-actions {
     justify-content: flex-start;
+  }
+
+  .trend-panel-controls {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .strategy-group-grid {
