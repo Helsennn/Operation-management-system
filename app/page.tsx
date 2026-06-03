@@ -1102,7 +1102,7 @@ function formatCompactItems(items: SalesItem[], fallback: string, limit = 3) {
 }
 
 function inferSoldMixLabel(item: SalesItem) {
-  const text = `${item.productName} ${item.productDescription} ${shortProductName(item.productName)}`.toLowerCase();
+  const text = `${item.productName} ${shortProductName(item.productName)}`.toLowerCase();
   if (/\b(monitor|koorui|fhd|curved|gaming display)\b/.test(text)) return "Monitors";
   if (/\b(power strip|surge|charger|charging|power bank|wireless charger|magsafe|battery)\b/.test(text)) return "Power / charging";
   if (/\b(air fryer|slushie|ice maker|stand mixer|toaster|kitchen|scale|coffee|blender)\b/.test(text)) return "Kitchen appliances";
