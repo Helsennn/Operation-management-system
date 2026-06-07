@@ -935,6 +935,62 @@ function blankSalesDataRow(): GeneratedSalesDataRow {
   };
 }
 
+function isRealSalesDataRow(row: GeneratedSalesDataRow) {
+  return Boolean(row.productName && row.productName !== "Cancelled Orders" && row.productName !== "Failed Orders");
+}
+
+function mergeGeneratedSalesOutputs(current: GeneratedSalesOutputs, incoming: GeneratedSalesOutputs, sourceFile: string): GeneratedSalesOutputs {
+  const salesGroups = new Map<string, GeneratedSalesDataRow>();
+  [...current.salesData, ...incoming.salesData].filter(isRealSalesDataRow).forEach((row) => {
+    const costPerItem = typeof row.costPerItem === "number" ? row.costPerItem : parseNumber(String(row.costPerItem));
+    const orders = typeof row.numberOfOrders === "number" ? row.numberOfOrders : parseNumber(String(row.numberOfOrders));
+    const totalSales = typeof row.totalSales === "number" ? row.totalSales : parseNumber(String(row.totalSales));
+    const key = `${row.productName}::${row.productDescription}::${costPerItem}`;
+    const existing = salesGroups.get(key);
+    if (!existing) {
+      salesGroups.set(key, {
+        ...row,
+        costPerItem,
+        averagePrice: orders ? totalSales / orders : 0,
+        numberOfOrders: orders,
+        totalSales
+      });
+      return;
+    }
+
+    const existingOrders = typeof existing.numberOfOrders === "number" ? existing.numberOfOrders : parseNumber(String(existing.numberOfOrders));
+    const existingSales = typeof existing.totalSales === "number" ? existing.totalSales : parseNumber(String(existing.totalSales));
+    const nextOrders = existingOrders + orders;
+    const nextSales = existingSales + totalSales;
+    salesGroups.set(key, {
+      ...existing,
+      averagePrice: nextOrders ? nextSales / nextOrders : 0,
+      numberOfOrders: nextOrders,
+      totalSales: nextSales
+    });
+  });
+
+  const migrateGroups = new Map<string, GeneratedMigrateDataRow>();
+  [...current.migrateData, ...incoming.migrateData].forEach((row) => {
+    const key = `${row.productName}::${row.productDescription}::${row.sku}`;
+    const existing = migrateGroups.get(key);
+    if (existing) {
+      existing.numberOfOrders += row.numberOfOrders;
+    } else {
+      migrateGroups.set(key, { ...row });
+    }
+  });
+
+  return {
+    sourceFile,
+    salesData: Array.from(salesGroups.values()).sort((a, b) => Number(b.totalSales) - Number(a.totalSales)),
+    migrateData: Array.from(migrateGroups.values()).sort((a, b) => b.numberOfOrders - a.numberOfOrders),
+    financeData: [...current.financeData, ...incoming.financeData].sort((a, b) => b.productName.localeCompare(a.productName)),
+    cancelledOrders: Array.from(new Set([...current.cancelledOrders, ...incoming.cancelledOrders])),
+    failedOrders: Array.from(new Set([...current.failedOrders, ...incoming.failedOrders]))
+  };
+}
+
 function csvEscape(value: string | number) {
   const text = String(value ?? "");
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -3224,18 +3280,29 @@ ${smartSummaryParts.map((part) => `- ${part}`).join("\n")}`;
       setCsvStatus("Could not parse rows. Check that the file has headers and sales data.");
       return;
     }
-    setSalesItems(rows);
-    setSalesOutputs(generatedOutputs);
     const trendDate = inferDateFromFileName(file.name, csvTrendDate || showInfo.date) || csvTrendDate || showInfo.date;
+    const baseSessionName = file.name.replace(/\.csv$/i, "");
+    const shouldAppendSession = Boolean(salesOutputs && currentReportDate === trendDate);
+    const nextSalesItems = shouldAppendSession ? aggregateSalesItems([...salesItems, ...rows]) : rows;
+    const nextSalesOutputs = shouldAppendSession && salesOutputs
+      ? mergeGeneratedSalesOutputs(salesOutputs, generatedOutputs, `${trendDate}-combined-sessions.csv`)
+      : generatedOutputs;
+    setSalesItems(nextSalesItems);
+    setSalesOutputs(nextSalesOutputs);
     const filteredRows = applySkuFilters(rows, skuExclusionRules, skuIncludeRules);
-    const dailyPoint = buildDailyTrendPoint(filteredRows, trendDate, showInfo.livestreamHours, file.name.replace(/\.csv$/i, ""));
+    const filteredCombinedRows = applySkuFilters(nextSalesItems, skuExclusionRules, skuIncludeRules);
+    const dailyPoint = buildDailyTrendPoint(filteredRows, trendDate, showInfo.livestreamHours, `${baseSessionName}-${Date.now()}`);
     upsertDailyTrendPoint(dailyPoint);
     updateReportDate(trendDate);
-    const firstSellable = filteredRows.find((item) => !item.isGiveaway && item.costPerItem > 0);
-    setSelectedSkuId(firstSellable?.id ?? filteredRows[0]?.id ?? rows[0]?.id ?? "");
+    const firstSellable = filteredCombinedRows.find((item) => !item.isGiveaway && item.costPerItem > 0);
+    setSelectedSkuId(firstSellable?.id ?? filteredCombinedRows[0]?.id ?? nextSalesItems[0]?.id ?? "");
     setActiveLayer(null);
     setCpiView("all");
-    setCsvStatus(`${rows.length} SKU rows imported from ${file.name}. Session saved for ${dailyPoint.label}; same-day sessions are combined in the trend.`);
+    setCsvStatus(
+      shouldAppendSession
+        ? `${rows.length} SKU rows imported from ${file.name}. Added to ${dailyPoint.label}; current report now combines ${nextSalesItems.length} SKU rows across same-day sessions.`
+        : `${rows.length} SKU rows imported from ${file.name}. Session saved for ${dailyPoint.label}; additional same-day uploads will be added to this report.`
+    );
     setReportStatus("Draft updated");
     event.target.value = "";
     showToast("CSV imported and report refreshed.");
